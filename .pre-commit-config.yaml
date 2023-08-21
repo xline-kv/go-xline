@@ -1,0 +1,39 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+fail_fast: false
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: no-commit-to-branch
+      - id: check-byte-order-marker
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: check-yaml
+      - id: check-toml
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: trailing-whitespace
+  - repo: https://github.com/psf/black
+    rev: 23.3.0
+    hooks:
+      - id: black
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.16.0
+    hooks:
+      - id: typos
+  - repo: local
+    hooks:
+      - id: conventional-commit-msg-validation
+        name: commit message conventional validation
+        language: pygrep
+        entry: '^(breaking|build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test){1}(\([\w\-\.]+\))?(!)?: ([\w `])+([\s\S]*)'
+        args: [--multiline, --negate]
+        stages: [commit-msg]
+      - id: commit-msg-needs-to-be-signed-off
+        name: commit message needs to be signed off
+        language: pygrep
+        entry: '^Signed-off-by:'
+        args: [--multiline, --negate]
+        stages: [commit-msg]

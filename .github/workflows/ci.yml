@@ -6,8 +6,86 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  GO_VERSION: 1.21
 
 jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{env.GO_VERSION}}
+
+    - name: Format code
+      run: go fmt ./...
+
+  lint:
+    name: Lint Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{env.GO_VERSION}}
+
+      - name: Generate API
+        uses: ./.github/workflows/protobuf
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: v1.54.2
+
+  test:
+    name: Test Sample Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{env.GO_VERSION}}
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.10'
+
+      - name: Generate API
+        uses: ./.github/workflows/protobuf
+
+      - name: Start the cluster
+        run: ./scripts/quick_start.sh
+
+      - name: Run tests
+        run: GOLANG_PROTOBUF_REGISTRATION_CONFLICT="ignore"
+           go test
+           -race
+           -coverpkg=./client
+           -coverprofile=coverage.out
+           -covermode=atomic
+           ./tests/
+        env:
+          GO111MODULE: 'auto'
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
+          verbose: true
+
   commit:
     name: Commit Message Validation
     runs-on: ubuntu-latest

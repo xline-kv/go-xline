@@ -16,7 +16,7 @@ import (
 )
 
 // Protocol client
-type client struct {
+type curpClient struct {
 	// Current leader
 	leader uint64
 	// Inner protocol clients
@@ -24,13 +24,12 @@ type client struct {
 	// All servers' `Connect`
 	connects map[uint64]string
 	// Curp client timeout settings
-	timeout clientTimeout
+	timeout ClientTimeout
 }
 
 // Build client from addresses, this method will fetch all members from servers
-func BuildCurpClientFromAddrs(addrs []string) (*client, error) {
+func BuildCurpClientFromAddrs(addrs []string, clientTimeout ClientTimeout) (*curpClient, error) {
 	logger := xlog.GetLogger()
-	clientTimeout := NewDefaultClientTimeout()
 
 	var clients []curpapi.ProtocolClient
 
@@ -49,7 +48,7 @@ func BuildCurpClientFromAddrs(addrs []string) (*client, error) {
 		return nil, err
 	}
 
-	return &client{
+	return &curpClient{
 		inner:    clients,
 		connects: cluster.AllMembers,
 		timeout:  clientTimeout,
@@ -92,7 +91,7 @@ type roundRes struct {
 }
 
 // Propose the request to servers, if use_fast_path is false, it will wait for the synced index
-func (c *client) Propose(cmd *xlineapi.Command, useFastPath bool) (*ProposeResponse, error) {
+func (c *curpClient) propose(cmd *xlineapi.Command, useFastPath bool) (*ProposeResponse, error) {
 	fastResCh := make(chan *roundRes)
 	slowResCh := make(chan *roundRes)
 
@@ -126,7 +125,7 @@ func (c *client) Propose(cmd *xlineapi.Command, useFastPath bool) (*ProposeRespo
 
 // The fast round of Curp protocol
 // It broadcast the requests to all the curp servers.
-func (c *client) fastRound(cmd *xlineapi.Command) *roundRes {
+func (c *curpClient) fastRound(cmd *xlineapi.Command) *roundRes {
 	logger := xlog.GetLogger()
 
 	logger.Info("Fast round start.", zap.String("Propose ID:", cmd.ProposeId))
@@ -208,7 +207,7 @@ func (c *client) fastRound(cmd *xlineapi.Command) *roundRes {
 				}
 			}
 			if isReceivedSuccessRes == 2 {
-				return &roundRes{err: ProposeError{ExecuteError: &exeErr}}
+				return &roundRes{res: &ProposeResponse{IsFastRoundSuccess: false}, err: ProposeError{ExecuteError: &exeErr}}
 			}
 		}
 	}
@@ -225,7 +224,7 @@ func (c *client) fastRound(cmd *xlineapi.Command) *roundRes {
 }
 
 // The slow round of Curp protocol
-func (c *client) slowRound(cmd *xlineapi.Command) *roundRes {
+func (c *curpClient) slowRound(cmd *xlineapi.Command) *roundRes {
 	logger := xlog.GetLogger()
 
 	logger.Info("Slow round start.", zap.String("Propose ID:", cmd.ProposeId))
@@ -291,7 +290,7 @@ func (c *client) slowRound(cmd *xlineapi.Command) *roundRes {
 
 // Send fetch leader requests to all servers until there is a leader
 // Note: The fetched leader may still be outdated
-func (c *client) fetchLeader() *uint64 {
+func (c *curpClient) fetchLeader() *uint64 {
 	fetchClusterRespCh := make(chan *curpapi.FetchLeaderResponse)
 	var leader *uint64
 	var maxTerm uint64 = 0
@@ -342,27 +341,6 @@ type ProposeResponse struct {
 	SyncResp           *xlineapi.SyncResponse
 	CommandResp        *xlineapi.CommandResponse
 	IsFastRoundSuccess bool
-}
-
-// Curp client settings
-type clientTimeout struct {
-	// Curp client wait idle
-	idleTimeout time.Duration
-	// Curp client wait sync timeout
-	waitSyncedTimeout time.Duration
-	// Curp client propose request timeout
-	proposeTimeout time.Duration
-	// Curp client retry interval
-	retry_timeout time.Duration
-}
-
-func NewDefaultClientTimeout() clientTimeout {
-	return clientTimeout{
-		idleTimeout:       1 * time.Second,
-		waitSyncedTimeout: 2 * time.Second,
-		proposeTimeout:    1 * time.Second,
-		retry_timeout:     50 * time.Millisecond,
-	}
 }
 
 type CommandSyncError struct {

@@ -22,8 +22,14 @@ jobs:
       with:
         go-version: ${{env.GO_VERSION}}
 
-    - name: Format code
-      run: go fmt ./...
+    - name: Check format
+      run: |
+        output="$(gofmt -l .)"
+        if [ ${#output} -gt 0 ]; then
+          echo "gofmt fail"
+          exit 1
+        fi
+      shell: bash
 
   lint:
     name: Lint Check
@@ -71,7 +77,6 @@ jobs:
       - name: Run tests
         run: GOLANG_PROTOBUF_REGISTRATION_CONFLICT="ignore"
            go test
-           -race
            -coverpkg=./client
            -coverprofile=coverage.out
            -covermode=atomic

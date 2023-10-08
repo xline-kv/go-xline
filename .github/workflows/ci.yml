@@ -63,11 +63,6 @@ jobs:
         with:
           go-version: ${{env.GO_VERSION}}
 
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.10'
-
       - name: Generate API
         uses: ./.github/workflows/protobuf
 

@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"time"
 
 	xlineapi "github.com/xline-kv/go-xline/api/xline"
@@ -14,11 +15,15 @@ import (
 type client struct {
 	// Kv client
 	Kv kvClient
+	// Lease client
+	Lease leaseClient
 }
 
 func Connect(allMembers []string, options ...ClientOptions) (*client, error) {
+	name := "client"
 	token := ""
 	clientTimeout := newDefaultClientTimeout()
+	idGen := newLeaseId()
 
 	if len(options) != 0 {
 		// get timeout
@@ -47,11 +52,17 @@ func Connect(allMembers []string, options ...ClientOptions) (*client, error) {
 	if err != nil {
 		return nil, err
 	}
+	leaseClient, err := buildLeaseClientFromAddrs(allMembers, clientTimeout)
+	if err != nil {
+		return nil, err
+	}
 
-	kv := newKvClient("client", *curpClient, token)
+	kv := newKvClient(name, *curpClient, token)
+	lease := newLeaseClient(name, *curpClient, leaseClient, token, idGen)
 
 	return &client{
-		Kv: kv,
+		Kv:    kv,
+		Lease: lease,
 	}, nil
 }
 
@@ -109,4 +120,24 @@ func newClientTimeout(options ClientTimeout) ClientTimeout {
 	}
 
 	return ct
+}
+
+// Generator of unique lease id
+// Note that this Lease Id generation method may cause collisions,
+// the client should retry after informed by the server.
+type leaseIdGenerator struct {
+	// the current lease id
+	id uint64
+}
+
+func newLeaseId() leaseIdGenerator {
+	return leaseIdGenerator{id: rand.Uint64()}
+}
+
+// Generate a new `leaseId`
+func (g *leaseIdGenerator) next() int64 {
+	if g.id == 0 {
+		return g.next()
+	}
+	return int64(g.id & 0x7FFF_FFFF_FFFF_FFFF)
 }

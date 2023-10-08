@@ -15,6 +15,8 @@ import (
 type client struct {
 	// Kv client
 	Kv kvClient
+	// Auth client
+	Auth authClient
 	// Lease client
 	Lease leaseClient
 }
@@ -58,10 +60,12 @@ func Connect(allMembers []string, options ...ClientOptions) (*client, error) {
 	}
 
 	kv := newKvClient(name, *curpClient, token)
+	auth := newAuthClient(name, *curpClient, token)
 	lease := newLeaseClient(name, *curpClient, leaseClient, token, idGen)
 
 	return &client{
 		Kv:    kv,
+		Auth:  auth,
 		Lease: lease,
 	}, nil
 }

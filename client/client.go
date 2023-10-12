@@ -21,6 +21,8 @@ type client struct {
 	Lease leaseClient
 	// Watch client
 	Watch watchClient
+	// Maintenance client
+	Maintenance maintenanceClient
 }
 
 func Connect(allMembers []string, options ...ClientOptions) (*client, error) {
@@ -65,12 +67,14 @@ func Connect(allMembers []string, options ...ClientOptions) (*client, error) {
 	auth := newAuthClient(name, *curpClient, token)
 	lease := newLeaseClient(name, *curpClient, conn, token, idGen)
 	watch := newWatchClient(conn)
+	maintenance := newMaintenanceClient(conn)
 
 	return &client{
-		Kv:    kv,
-		Auth:  auth,
-		Lease: lease,
-		Watch: watch,
+		Kv:          kv,
+		Auth:        auth,
+		Lease:       lease,
+		Watch:       watch,
+		Maintenance: maintenance,
 	}, nil
 }
 

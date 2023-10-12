@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 	xlineapi "github.com/xline-kv/go-xline/api/xline"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // Client for Lease operations
@@ -28,26 +27,17 @@ type leaseClient struct {
 func newLeaseClient(
 	name string,
 	curpClient curpClient,
-	innerLeaseClient xlineapi.LeaseClient,
+	conn *grpc.ClientConn,
 	token string,
 	idGen leaseIdGenerator,
 ) leaseClient {
 	return leaseClient{
 		name:        name,
 		curpClient:  curpClient,
-		leaseClient: innerLeaseClient,
+		leaseClient: xlineapi.NewLeaseClient(conn),
 		token:       token,
 		idGen:       idGen,
 	}
-}
-
-// Build inner client
-func buildLeaseClientFromAddrs(addrs []string, timeout ClientTimeout) (xlineapi.LeaseClient, error) {
-	conn, err := grpc.Dial(addrs[0], grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithIdleTimeout(timeout.idleTimeout))
-	if err != nil {
-		return nil, err
-	}
-	return xlineapi.NewLeaseClient(conn), nil
 }
 
 // Creates a lease which expires if the server does not receive a keepAlive

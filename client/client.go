@@ -19,6 +19,8 @@ type client struct {
 	Auth authClient
 	// Lease client
 	Lease leaseClient
+	// Watch client
+	Watch watchClient
 }
 
 func Connect(allMembers []string, options ...ClientOptions) (*client, error) {
@@ -26,6 +28,10 @@ func Connect(allMembers []string, options ...ClientOptions) (*client, error) {
 	token := ""
 	clientTimeout := newDefaultClientTimeout()
 	idGen := newLeaseId()
+	conn, err := grpc.Dial(allMembers[0], grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, err
+	}
 
 	if len(options) != 0 {
 		// get timeout
@@ -54,19 +60,17 @@ func Connect(allMembers []string, options ...ClientOptions) (*client, error) {
 	if err != nil {
 		return nil, err
 	}
-	leaseClient, err := buildLeaseClientFromAddrs(allMembers, clientTimeout)
-	if err != nil {
-		return nil, err
-	}
 
 	kv := newKvClient(name, *curpClient, token)
 	auth := newAuthClient(name, *curpClient, token)
-	lease := newLeaseClient(name, *curpClient, leaseClient, token, idGen)
+	lease := newLeaseClient(name, *curpClient, conn, token, idGen)
+	watch := newWatchClient(conn)
 
 	return &client{
 		Kv:    kv,
 		Auth:  auth,
 		Lease: lease,
+		Watch: watch,
 	}, nil
 }
 

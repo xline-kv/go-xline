@@ -23,6 +23,8 @@ type client struct {
 	Watch watchClient
 	// Maintenance client
 	Maintenance maintenanceClient
+	// Lock client
+	Lock lockClient
 }
 
 func Connect(allMembers []string, options ...ClientOptions) (*client, error) {
@@ -68,6 +70,7 @@ func Connect(allMembers []string, options ...ClientOptions) (*client, error) {
 	lease := newLeaseClient(name, *curpClient, conn, token, idGen)
 	watch := newWatchClient(conn)
 	maintenance := newMaintenanceClient(conn)
+	lock := newLockClient(name, *curpClient, lease, watch, token)
 
 	return &client{
 		Kv:          kv,
@@ -75,6 +78,7 @@ func Connect(allMembers []string, options ...ClientOptions) (*client, error) {
 		Lease:       lease,
 		Watch:       watch,
 		Maintenance: maintenance,
+		Lock:        lock,
 	}, nil
 }
 
@@ -148,6 +152,7 @@ func newLeaseId() leaseIdGenerator {
 
 // Generate a new `leaseId`
 func (g *leaseIdGenerator) next() int64 {
+	g.id = g.id + 1
 	if g.id == 0 {
 		return g.next()
 	}

@@ -1,12 +1,21 @@
 package client
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
 	xlineapi "github.com/xline-kv/go-xline/api/xline"
 )
+
+type KV interface {
+	// Put puts a key-value pair into xline.
+	// Note that key,value can be plain bytes array and string is
+	// an immutable representation of that bytes array.
+	// To get a string of bytes, do string([]byte{0x10, 0x20}).
+	Put(ctx context.Context, key, val string, opts ...putOption) (*putResponse, error)
+}
 
 // / Client for KV operations.
 type kvClient struct {
@@ -47,26 +56,20 @@ func (c *kvClient) Range(request *xlineapi.RangeRequest) (*xlineapi.RangeRespons
 }
 
 // Put a key-value into the store
-func (c *kvClient) Put(request *xlineapi.PutRequest) (*xlineapi.PutResponse, error) {
-	keyRange := []*xlineapi.KeyRange{
-		{
-			Key:      request.Key,
-			RangeEnd: request.Key,
-		},
-	}
+func (c *kvClient) Put(ctx context.Context, key, val string, opts ...putOption) (*putResponse, error) {
 	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
 		RequestWrapper: &xlineapi.RequestWithToken_PutRequest{
-			PutRequest: request,
+			PutRequest: opPut(key, val, opts...).toReq(),
 		},
 	}
 	proposeId := c.generateProposeId()
-	cmd := xlineapi.Command{Keys: keyRange, Request: &requestWithToken, ProposeId: proposeId}
-	res, err := c.curpClient.propose(&cmd, true)
+	cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: proposeId}
+	res, err := c.curpClient.propose(&cmd, false)
 	if err != nil {
 		return nil, err
 	}
-	return res.CommandResp.GetPutResponse(), err
+	return (*putResponse)(res.CommandResp.GetPutResponse()), err
 }
 
 // Delete a range of keys from the store

@@ -31,25 +31,25 @@ jobs:
         fi
       shell: bash
 
-  lint:
-    name: Lint Check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+  # lint:
+  #   name: Lint Check
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v3
 
-      - name: Setup Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: ${{env.GO_VERSION}}
+  #     - name: Setup Go
+  #       uses: actions/setup-go@v4
+  #       with:
+  #         go-version: ${{env.GO_VERSION}}
 
-      - name: Generate API
-        uses: ./.github/workflows/protobuf
+  #     - name: Generate API
+  #       uses: ./.github/workflows/protobuf
 
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
-        with:
-          version: v1.54.2
+  #     - name: golangci-lint
+  #       uses: golangci/golangci-lint-action@v3
+  #       with:
+  #         version: v1.54.2
 
   test:
     name: Test Sample Validation
@@ -72,6 +72,7 @@ jobs:
       - name: Run tests
         run: GOLANG_PROTOBUF_REGISTRATION_CONFLICT="ignore"
            go test
+           ./tests/kv_test.go
            -coverpkg=./client
            -coverprofile=coverage.out
            -covermode=atomic

@@ -76,87 +76,44 @@ func TestGet(t *testing.T) {
 	})
 }
 
-// func TestDelete(t *testing.T) {
-// 	xlog.SetLevel(zapcore.WarnLevel)
+func TestDelete(t *testing.T) {
+	xlog.SetLevel(zapcore.WarnLevel)
 
-// 	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
+	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
 
-// 	xlineClient, err := client.Connect(curpMembers)
-// 	assert.NoError(t, err)
-// 	kvClient := xlineClient.Kv
+	xlineClient, _ := client.Connect(curpMembers)
+	kvClient := xlineClient.Kv
 
-// 	_, err = kvClient.Put(&xlineapi.PutRequest{
-// 		Key:   []byte("del10"),
-// 		Value: []byte("10"),
-// 	})
-// 	assert.NoError(t, err)
-// 	_, err = kvClient.Put(&xlineapi.PutRequest{
-// 		Key:   []byte("del11"),
-// 		Value: []byte("11"),
-// 	})
-// 	assert.NoError(t, err)
-// 	_, err = kvClient.Put(&xlineapi.PutRequest{
-// 		Key:   []byte("del20"),
-// 		Value: []byte("20"),
-// 	})
-// 	assert.NoError(t, err)
-// 	_, err = kvClient.Put(&xlineapi.PutRequest{
-// 		Key:   []byte("del21"),
-// 		Value: []byte("21"),
-// 	})
-// 	assert.NoError(t, err)
-// 	_, err = kvClient.Put(&xlineapi.PutRequest{
-// 		Key:   []byte("del31"),
-// 		Value: []byte("31"),
-// 	})
-// 	assert.NoError(t, err)
-// 	_, err = kvClient.Put(&xlineapi.PutRequest{
-// 		Key:   []byte("del32"),
-// 		Value: []byte("32"),
-// 	})
-// 	assert.NoError(t, err)
+	kvClient.Put(context.Background(), "del10", "10")
+	kvClient.Put(context.Background(), "del11", "11")
+	kvClient.Put(context.Background(), "del20", "20")
+	kvClient.Put(context.Background(), "del21", "21")
+	kvClient.Put(context.Background(), "del31", "31")
+	kvClient.Put(context.Background(), "del32", "32")
 
-// 	t.Run("delete_key", func(t *testing.T) {
-// 		delRes, err := kvClient.Delete(&xlineapi.DeleteRangeRequest{
-// 			Key:    []byte("del11"),
-// 			PrevKv: true,
-// 		})
+	t.Run("delete_key", func(t *testing.T) {
+		delRes, _ := kvClient.Delete(context.Background(), "del11", client.WithDeletePrevKV())
 
-// 		assert.NoError(t, err)
-// 		assert.Equal(t, delRes.Deleted, int64(1))
-// 		assert.Equal(t, "del11", string(delRes.PrevKvs[0].Key))
-// 		assert.Equal(t, "11", string(delRes.PrevKvs[0].Value))
+		assert.Equal(t, delRes.Deleted, int64(1))
+		assert.Equal(t, "del11", string(delRes.PrevKvs[0].Key))
+		assert.Equal(t, "11", string(delRes.PrevKvs[0].Value))
 
-// 		rangeRes, err := kvClient.Range(&xlineapi.RangeRequest{
-// 			Key: []byte("del11"),
-// 		})
+		getRes, _ := kvClient.Get(context.Background(), "del11")
+		assert.Equal(t, getRes.Count, int64(0))
+	})
 
-// 		assert.NoError(t, err)
-// 		assert.Equal(t, rangeRes.Count, int64(0))
-// 	})
+	t.Run("delete_a_range_of_keys", func(t *testing.T) {
+		delRes, _ := kvClient.Delete(context.Background(), "del11", client.WithDeleteRange("del22"), client.WithDeletePrevKV())
+		assert.Equal(t, int64(2), delRes.Deleted)
+		assert.Equal(t, "del20", string(delRes.PrevKvs[0].Key))
+		assert.Equal(t, "20", string(delRes.PrevKvs[0].Value))
+		assert.Equal(t, "del21", string(delRes.PrevKvs[1].Key))
+		assert.Equal(t, "21", string(delRes.PrevKvs[1].Value))
 
-// 	t.Run("delete_a_range_of_keys", func(t *testing.T) {
-// 		delRes, err := kvClient.Delete(&xlineapi.DeleteRangeRequest{
-// 			Key:      []byte("del11"),
-// 			RangeEnd: []byte("del22"),
-// 			PrevKv:   true,
-// 		})
-
-// 		assert.NoError(t, err)
-// 		assert.Equal(t, int64(2), delRes.Deleted)
-// 		assert.Equal(t, "del20", string(delRes.PrevKvs[0].Key))
-// 		assert.Equal(t, "20", string(delRes.PrevKvs[0].Value))
-// 		assert.Equal(t, "del21", string(delRes.PrevKvs[1].Key))
-// 		assert.Equal(t, "21", string(delRes.PrevKvs[1].Value))
-
-// 		rangeRes, err := kvClient.Range(&xlineapi.RangeRequest{
-// 			Key: []byte("del11"),
-// 		})
-
-// 		assert.NoError(t, err)
-// 		assert.Equal(t, int64(0), rangeRes.Count)
-// 	})
-// }
+		getRes, _ := kvClient.Get(context.Background(), "del11")
+		assert.Equal(t, int64(0), getRes.Count)
+	})
+}
 
 // func TestTxn(t *testing.T) {
 // 	xlog.SetLevel(zapcore.WarnLevel)

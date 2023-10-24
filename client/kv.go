@@ -25,6 +25,9 @@ type KV interface {
 	// When passed WithLimit(limit), the number of returned keys is bounded by limit.
 	// When passed WithSort(), the keys will be sorted.
 	Get(ctx context.Context, key string, opts ...rangeOption) (*getResponse, error)
+
+	// Delete deletes a key, or optionally using WithRange(end), [key, end).
+	Delete(ctx context.Context, key string, opts ...delOption) (*deleteResponse, error)
 }
 
 // / Client for KV operations.
@@ -77,26 +80,20 @@ func (c *kvClient) Put(ctx context.Context, key, val string, opts ...putOption) 
 }
 
 // Delete a range of keys from the store
-func (c *kvClient) Delete(request *xlineapi.DeleteRangeRequest) (*xlineapi.DeleteRangeResponse, error) {
-	keyRange := []*xlineapi.KeyRange{
-		{
-			Key:      request.Key,
-			RangeEnd: request.RangeEnd,
-		},
-	}
+func (c *kvClient) Delete(ctx context.Context, key string, opts ...delOption) (*deleteResponse, error) {
 	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
 		RequestWrapper: &xlineapi.RequestWithToken_DeleteRangeRequest{
-			DeleteRangeRequest: request,
+			DeleteRangeRequest: opDel(key, opts...).toReq(),
 		},
 	}
 	proposeId := c.generateProposeId()
-	cmd := xlineapi.Command{Keys: keyRange, Request: &requestWithToken, ProposeId: proposeId}
-	res, err := c.curpClient.propose(&cmd, true)
+	cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: proposeId}
+	res, err := c.curpClient.propose(&cmd, false)
 	if err != nil {
 		return nil, err
 	}
-	return res.CommandResp.GetDeleteRangeResponse(), err
+	return (*deleteResponse)(res.CommandResp.GetDeleteRangeResponse()), err
 }
 
 // Creates a transaction, which can provide serializable writes

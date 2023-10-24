@@ -33,89 +33,57 @@ func TestPut(t *testing.T) {
 	})
 }
 
-// func TestRange(t *testing.T) {
-// 	xlog.SetLevel(zapcore.WarnLevel)
+func TestGet(t *testing.T) {
+	xlog.SetLevel(zapcore.WarnLevel)
 
-// 	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
+	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
 
-// 	client, err := client.Connect(curpMembers)
-// 	assert.NoError(t, err)
-// 	kvClient := client.Kv
+	xlineClient, _ := client.Connect(curpMembers)
+	kvClient := xlineClient.Kv
 
-// 	_, err = kvClient.Put(&xlineapi.PutRequest{
-// 		Key:   []byte("get10"),
-// 		Value: []byte("10"),
-// 	})
-// 	assert.NoError(t, err)
-// 	_, err = kvClient.Put(&xlineapi.PutRequest{
-// 		Key:   []byte("get11"),
-// 		Value: []byte("11"),
-// 	})
-// 	assert.NoError(t, err)
-// 	_, err = kvClient.Put(&xlineapi.PutRequest{
-// 		Key:   []byte("get20"),
-// 		Value: []byte("20"),
-// 	})
-// 	assert.NoError(t, err)
-// 	_, err = kvClient.Put(&xlineapi.PutRequest{
-// 		Key:   []byte("get21"),
-// 		Value: []byte("21"),
-// 	})
-// 	assert.NoError(t, err)
+	kvClient.Put(context.Background(), "get10", "10")
+	kvClient.Put(context.Background(), "get11", "11")
+	kvClient.Put(context.Background(), "get20", "20")
+	kvClient.Put(context.Background(), "get21", "21")
 
-// 	t.Run("get_Key", func(t *testing.T) {
-// 		res, err := kvClient.Range(&xlineapi.RangeRequest{
-// 			Key: []byte("get11"),
-// 		})
+	t.Run("get_Key", func(t *testing.T) {
+		res, _ := kvClient.Get(context.Background(), "get11")
+		assert.False(t, res.More)
+		assert.Len(t, res.Kvs, 1)
+		assert.Equal(t, "get11", string(res.Kvs[0].Key))
+		assert.Equal(t, "11", string(res.Kvs[0].Value))
+	})
 
-// 		assert.NoError(t, err)
-// 		assert.False(t, res.More)
-// 		assert.Len(t, res.Kvs, 1)
-// 		assert.Equal(t, "get11", string(res.Kvs[0].Key))
-// 		assert.Equal(t, "11", string(res.Kvs[0].Value))
-// 	})
+	t.Run("get_from_key", func(t *testing.T) {
+		res, _ := kvClient.Get(context.Background(), "get11", client.WithGetFromKey(), client.WithGetLimit(2))
+		assert.True(t, res.More)
+		assert.Len(t, res.Kvs, 2)
+		assert.Equal(t, "get11", string(res.Kvs[0].Key))
+		assert.Equal(t, "11", string(res.Kvs[0].Value))
+		assert.Equal(t, "get20", string(res.Kvs[1].Key))
+		assert.Equal(t, "20", string(res.Kvs[1].Value))
+	})
 
-// 	t.Run("get_from_key", func(t *testing.T) {
-// 		res, err := kvClient.Range(&xlineapi.RangeRequest{
-// 			Key:      []byte("get11"),
-// 			RangeEnd: []byte{0},
-// 			Limit:    2,
-// 		})
-
-// 		assert.NoError(t, err)
-// 		assert.True(t, res.More)
-// 		assert.Len(t, res.Kvs, 2)
-// 		assert.Equal(t, "get11", string(res.Kvs[0].Key))
-// 		assert.Equal(t, "11", string(res.Kvs[0].Value))
-// 		assert.Equal(t, "get20", string(res.Kvs[1].Key))
-// 		assert.Equal(t, "20", string(res.Kvs[1].Value))
-// 	})
-
-// 	t.Run("get_prefix_keys", func(t *testing.T) {
-// 		res, err := kvClient.Range(&xlineapi.RangeRequest{
-// 			Key:      []byte("get1"),
-// 			RangeEnd: []byte("get2"),
-// 		})
-
-// 		assert.NoError(t, err)
-// 		assert.Equal(t, int64(2), res.Count)
-// 		assert.False(t, res.More)
-// 		assert.Len(t, res.Kvs, 2)
-// 		assert.Equal(t, "get10", string(res.Kvs[0].Key))
-// 		assert.Equal(t, "10", string(res.Kvs[0].Value))
-// 		assert.Equal(t, "get11", string(res.Kvs[1].Key))
-// 		assert.Equal(t, "11", string(res.Kvs[1].Value))
-// 	})
-// }
+	t.Run("get_prefix_keys", func(t *testing.T) {
+		res, _ := kvClient.Get(context.Background(), "get1", client.WithGetPrefix())
+		assert.Equal(t, int64(2), res.Count)
+		assert.False(t, res.More)
+		assert.Len(t, res.Kvs, 2)
+		assert.Equal(t, "get10", string(res.Kvs[0].Key))
+		assert.Equal(t, "10", string(res.Kvs[0].Value))
+		assert.Equal(t, "get11", string(res.Kvs[1].Key))
+		assert.Equal(t, "11", string(res.Kvs[1].Value))
+	})
+}
 
 // func TestDelete(t *testing.T) {
 // 	xlog.SetLevel(zapcore.WarnLevel)
 
 // 	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
 
-// 	client, err := client.Connect(curpMembers)
+// 	xlineClient, err := client.Connect(curpMembers)
 // 	assert.NoError(t, err)
-// 	kvClient := client.Kv
+// 	kvClient := xlineClient.Kv
 
 // 	_, err = kvClient.Put(&xlineapi.PutRequest{
 // 		Key:   []byte("del10"),

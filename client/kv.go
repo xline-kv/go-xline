@@ -15,6 +15,16 @@ type KV interface {
 	// an immutable representation of that bytes array.
 	// To get a string of bytes, do string([]byte{0x10, 0x20}).
 	Put(ctx context.Context, key, val string, opts ...putOption) (*putResponse, error)
+
+	// Get retrieves keys.
+	// By default, Get will return the value for "key", if any.
+	// When passed WithRange(end), Get will return the keys in the range [key, end).
+	// When passed WithFromKey(), Get returns keys greater than or equal to key.
+	// When passed WithRev(rev) with rev > 0, Get retrieves keys at the given revision;
+	// if the required revision is compacted, the request will fail with ErrCompacted .
+	// When passed WithLimit(limit), the number of returned keys is bounded by limit.
+	// When passed WithSort(), the keys will be sorted.
+	Get(ctx context.Context, key string, opts ...rangeOption) (*getResponse, error)
 }
 
 // / Client for KV operations.
@@ -33,26 +43,20 @@ func newKvClient(name string, curpClient curpClient, token string) kvClient {
 }
 
 // Get a range of keys from the store
-func (c *kvClient) Range(request *xlineapi.RangeRequest) (*xlineapi.RangeResponse, error) {
-	keyRange := []*xlineapi.KeyRange{
-		{
-			Key:      request.Key,
-			RangeEnd: request.RangeEnd,
-		},
-	}
+func (c *kvClient) Get(ctx context.Context, key string, opts ...rangeOption) (*getResponse, error) {
 	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
 		RequestWrapper: &xlineapi.RequestWithToken_RangeRequest{
-			RangeRequest: request,
+			RangeRequest: opRange(key, opts...).toReq(),
 		},
 	}
 	proposeId := c.generateProposeId()
-	cmd := xlineapi.Command{Keys: keyRange, Request: &requestWithToken, ProposeId: proposeId}
+	cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: proposeId}
 	res, err := c.curpClient.propose(&cmd, true)
 	if err != nil {
 		return nil, err
 	}
-	return res.CommandResp.GetRangeResponse(), err
+	return (*getResponse)(res.CommandResp.GetRangeResponse()), err
 }
 
 // Put a key-value into the store

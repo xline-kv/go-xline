@@ -28,6 +28,9 @@ type KV interface {
 
 	// Delete deletes a key, or optionally using WithRange(end), [key, end).
 	Delete(ctx context.Context, key string, opts ...delOption) (*deleteResponse, error)
+
+	// Compact compacts etcd KV history before the given rev.
+	Compact(ctx context.Context, rev int64, opts ...compactOption) (*compactResponse, error)
 }
 
 // / Client for KV operations.
@@ -137,34 +140,23 @@ func (c *kvClient) Txn(request *xlineapi.TxnRequest) (*xlineapi.TxnResponse, err
 // For example, here is a revision list: [(A, 1), (A, 2), (A, 3), (A, 4), (A, 5)].
 // We compact at revision 3. After the compaction, the revision list will become [(A, 3), (A, 4), (A, 5)].
 // All revisions less than 3 are deleted. The latest revision, 3, will be kept.
-func (c *kvClient) Compact(request *xlineapi.CompactionRequest) (*xlineapi.CompactionResponse, error) {
-	useFastPath := request.Physical
+func (c *kvClient) Compact(ctx context.Context, rev int64, opts ...compactOption) (*compactResponse, error) {
+	op := opCompact(rev, opts...)
+	useFastPath := op.physical
 	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
 		RequestWrapper: &xlineapi.RequestWithToken_CompactionRequest{
-			CompactionRequest: request,
+			CompactionRequest: op.toRequest(),
 		},
 	}
 	proposeId := c.generateProposeId()
 	cmd := xlineapi.Command{Keys: []*xlineapi.KeyRange{}, Request: &requestWithToken, ProposeId: proposeId}
 
-	if useFastPath {
-		res, err := c.curpClient.propose(&cmd, true)
-		return res.CommandResp.GetCompactionResponse(), err
-	} else {
-		res, err := c.curpClient.propose(&cmd, false)
-		if err != nil {
-			return nil, err
-		}
-		if res.SyncResp == nil {
-			return nil, errors.New("syncRes is always Some when useFastPath is false")
-		}
-		if res.CommandResp.GetCompactionResponse() == nil {
-			return nil, errors.New("get compaction response fail")
-		}
-		res.CommandResp.GetCompactionResponse().Header.Revision = res.SyncResp.Revision
-		return res.CommandResp.GetCompactionResponse(), err
+	res, err := c.curpClient.propose(&cmd, useFastPath)
+	if err != nil {
+		return nil, err
 	}
+	return (*compactResponse)(res.CommandResp.GetCompactionResponse()), err
 }
 
 // Generate a new `ProposeId`

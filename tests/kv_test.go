@@ -221,62 +221,33 @@ func TestDelete(t *testing.T) {
 // 	})
 // }
 
-// func TestCompact(t *testing.T) {
-// 	xlog.SetLevel(zapcore.WarnLevel)
+func TestCompact(t *testing.T) {
+	xlog.SetLevel(zapcore.WarnLevel)
 
-// 	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
+	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
 
-// 	client, err := client.Connect(curpMembers)
-// 	assert.NoError(t, err)
-// 	kvClient := client.Kv
+	xlineClient, _ := client.Connect(curpMembers)
+	kvClient := xlineClient.Kv
 
-// 	_, err = kvClient.Put(&xlineapi.PutRequest{
-// 		Key:   []byte("compact"),
-// 		Value: []byte("0"),
-// 	})
-// 	assert.NoError(t, err)
-// 	putRes, err := kvClient.Put(&xlineapi.PutRequest{
-// 		Key:   []byte("compact"),
-// 		Value: []byte("1"),
-// 	})
+	kvClient.Put(context.Background(), "compact", "0")
+	putRes, _ := kvClient.Put(context.Background(), "compact", "1")
+	rev := putRes.Header.Revision
 
-// 	assert.NoError(t, err)
-// 	rev := putRes.Header.Revision
+	// before compacting
+	rev0res, _ := kvClient.Get(context.Background(), "compact", client.WithGetRev(rev-1))
+	assert.NotNil(t, rev0res)
+	assert.Equal(t, "0", string(rev0res.Kvs[0].Value))
 
-// 	// before compacting
-// 	rev0res, err := kvClient.Range(&xlineapi.RangeRequest{
-// 		Key:      []byte("compact"),
-// 		Revision: rev - 1,
-// 	})
-// 	assert.NoError(t, err)
-// 	assert.NotNil(t, rev0res)
-// 	assert.Equal(t, "0", string(rev0res.Kvs[0].Value))
+	rev1res, _ := kvClient.Get(context.Background(), "compact", client.WithGetRev(rev))
+	assert.NotNil(t, rev1res)
+	assert.Equal(t, "1", string(rev1res.Kvs[0].Value))
 
-// 	rev1res, err := kvClient.Range(&xlineapi.RangeRequest{
-// 		Key:      []byte("compact"),
-// 		Revision: rev,
-// 	})
-// 	assert.NoError(t, err)
-// 	assert.NotNil(t, rev1res)
-// 	assert.Equal(t, "1", string(rev1res.Kvs[0].Value))
+	kvClient.Compact(context.Background(), rev)
 
-// 	_, err = kvClient.Compact(&xlineapi.CompactionRequest{
-// 		Revision: rev,
-// 	})
-// 	assert.NoError(t, err)
+	// after compacting
+	_, err := kvClient.Get(context.Background(), "compact", client.WithGetRev(rev-1))
+	assert.Error(t, err)
 
-// 	// after compacting
-// 	_, err = kvClient.Range(&xlineapi.RangeRequest{
-// 		Key:      []byte("compact"),
-// 		Revision: rev - 1,
-// 	})
-// 	assert.Error(t, err)
-
-// 	rangeRes, err := kvClient.Range(&xlineapi.RangeRequest{
-// 		Key:      []byte("compact"),
-// 		Revision: rev,
-// 	})
-// 	assert.NoError(t, err)
-// 	assert.NotNil(t, rangeRes)
-// 	assert.Equal(t, "1", string(rangeRes.Kvs[0].Value))
-// }
+	getRes, _ := kvClient.Get(context.Background(), "compact", client.WithGetRev(rev))
+	assert.Equal(t, "1", string(getRes.Kvs[0].Value))
+}

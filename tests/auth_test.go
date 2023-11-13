@@ -1,10 +1,23 @@
+// Copyright 2023 The xline Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	xlineapi "github.com/xline-kv/go-xline/api/xline"
 	"github.com/xline-kv/go-xline/client"
 	"github.com/xline-kv/go-xline/xlog"
 	"go.uber.org/zap/zapcore"
@@ -15,44 +28,29 @@ func TestAuthUser(t *testing.T) {
 
 	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
 
-	client, err := client.Connect(curpMembers)
+	xlineClient, err := client.Connect(curpMembers)
 	assert.NoError(t, err)
-	authClient := client.Auth
+	authClient := xlineClient.Auth
 
 	t.Run("User operations should success in normal path", func(t *testing.T) {
 		name1 := "user1"
 		password1 := "pwd1"
 		password2 := "pwd2"
 
-		_, err := authClient.UserAdd(&xlineapi.AuthUserAddRequest{
-			Name:     name1,
-			Password: password1,
-		})
-		assert.NoError(t, err)
-		_, err = authClient.UserGet(&xlineapi.AuthUserGetRequest{
-			Name: name1,
-		})
+		authClient.UserAdd(name1, password1)
+
+		_, err := authClient.UserGet(name1)
 		assert.NoError(t, err)
 
-		res, err := authClient.UserList(&xlineapi.AuthUserListRequest{})
-		assert.NoError(t, err)
-		assert.NotNil(t, res)
+		res, _ := authClient.UserList()
 		assert.Contains(t, res.Users, name1)
 
-		_, err = authClient.UserChangePassword(&xlineapi.AuthUserChangePasswordRequest{
-			Name:     name1,
-			Password: password2,
-		})
+		_, err = authClient.UserChangePassword(name1, password2)
 		assert.NoError(t, err)
 
-		_, err = authClient.UserDelete(&xlineapi.AuthUserDeleteRequest{
-			Name: name1,
-		})
-		assert.NoError(t, err)
+		authClient.UserDelete(name1)
 
-		_, err = authClient.UserGet(&xlineapi.AuthUserGetRequest{
-			Name: name1,
-		})
+		_, err = authClient.UserGet(name1)
 		assert.Error(t, err)
 	})
 
@@ -60,25 +58,19 @@ func TestAuthUser(t *testing.T) {
 		role1 := "role1"
 		role2 := "role2"
 
-		_, err := authClient.RoleAdd(&xlineapi.AuthRoleAddRequest{Name: role1})
+		_, err := authClient.RoleAdd(role1)
+		_, err = authClient.RoleAdd(role2)
+
+		_, err = authClient.RoleGet(role1)
 		assert.NoError(t, err)
-		_, err = authClient.RoleAdd(&xlineapi.AuthRoleAddRequest{Name: role2})
+		_, err = authClient.RoleGet(role2)
 		assert.NoError(t, err)
 
-		_, err = authClient.RoleGet(&xlineapi.AuthRoleGetRequest{Role: role1})
-		assert.NoError(t, err)
-		_, err = authClient.RoleGet(&xlineapi.AuthRoleGetRequest{Role: role2})
-		assert.NoError(t, err)
-
-		res, err := authClient.RoleList(&xlineapi.AuthRoleListRequest{})
-		assert.NoError(t, err)
-		assert.NotNil(t, res)
+		res, err := authClient.RoleList()
 		assert.Equal(t, []string{role1, role2}, res.Roles)
 
-		_, err = authClient.RoleDelete(&xlineapi.AuthRoleDeleteRequest{Role: role1})
-		assert.NoError(t, err)
-		_, err = authClient.RoleDelete(&xlineapi.AuthRoleDeleteRequest{Role: role2})
-		assert.NoError(t, err)
+		authClient.RoleDelete(role1)
+		authClient.RoleDelete(role2)
 	})
 
 	t.Run("User role operations should success in normal path", func(t *testing.T) {
@@ -86,147 +78,47 @@ func TestAuthUser(t *testing.T) {
 		role1 := "role1"
 		role2 := "role2"
 
-		_, err := authClient.UserAdd(&xlineapi.AuthUserAddRequest{Name: name1})
-		assert.NoError(t, err)
-		_, err = authClient.RoleAdd(&xlineapi.AuthRoleAddRequest{Name: role1})
-		assert.NoError(t, err)
-		_, err = authClient.RoleAdd(&xlineapi.AuthRoleAddRequest{Name: role2})
-		assert.NoError(t, err)
+		authClient.UserAdd(name1, "")
+		authClient.RoleAdd(role1)
+		authClient.RoleAdd(role2)
 
-		_, err = authClient.UserGrantRole(&xlineapi.AuthUserGrantRoleRequest{
-			User: name1,
-			Role: role1,
-		})
-		assert.NoError(t, err)
-		_, err = authClient.UserGrantRole(&xlineapi.AuthUserGrantRoleRequest{
-			User: name1,
-			Role: role2,
-		})
-		assert.NoError(t, err)
+		authClient.UserGrantRole(name1, role1)
+		authClient.UserGrantRole(name1, role2)
 
-		res, err := authClient.UserGet(&xlineapi.AuthUserGetRequest{Name: name1})
-		assert.NoError(t, err)
-		assert.NotNil(t, res)
+		res, _ := authClient.UserGet(name1)
 		assert.Equal(t, []string{role1, role2}, res.Roles)
 
-		_, err = authClient.UserRevokeRole(&xlineapi.AuthUserRevokeRoleRequest{
-			Name: name1,
-			Role: role1,
-		})
-		assert.NoError(t, err)
-		_, err = authClient.UserRevokeRole(&xlineapi.AuthUserRevokeRoleRequest{
-			Name: name1,
-			Role: role2,
-		})
-		assert.NoError(t, err)
-
-		_, err = authClient.UserDelete(&xlineapi.AuthUserDeleteRequest{Name: name1})
-		assert.NoError(t, err)
-		_, err = authClient.RoleDelete(&xlineapi.AuthRoleDeleteRequest{Role: role1})
-		assert.NoError(t, err)
-		_, err = authClient.RoleDelete(&xlineapi.AuthRoleDeleteRequest{Role: role2})
-		assert.NoError(t, err)
+		authClient.UserRevokeRole(name1, role1)
+		authClient.UserRevokeRole(name1, role2)
+		authClient.UserDelete(name1)
+		authClient.RoleDelete(role1)
+		authClient.RoleDelete(role2)
 	})
 
 	t.Run("Permission operations should success in normal path", func(t *testing.T) {
 		role1 := "role1"
 
-		perm1 := &xlineapi.Permission{
-			PermType: xlineapi.Permission_READ,
-			Key:      []byte("123"),
-		}
-		perm2 := &xlineapi.Permission{
-			PermType: xlineapi.Permission_WRITE,
-			Key:      []byte("abc"),
-			RangeEnd: []byte{0},
-		}
-		perm3 := &xlineapi.Permission{
-			PermType: xlineapi.Permission_READWRITE,
-			Key:      []byte("hi"),
-			RangeEnd: []byte("hjj"),
-		}
-		perm4 := &xlineapi.Permission{
-			PermType: xlineapi.Permission_WRITE,
-			Key:      []byte("pp"),
-			RangeEnd: []byte("pq"),
-		}
-		perm5 := &xlineapi.Permission{
-			PermType: xlineapi.Permission_READ,
-			Key:      []byte{0},
-			RangeEnd: []byte{0},
-		}
+		authClient.RoleAdd(role1)
 
-		_, err := authClient.RoleAdd(&xlineapi.AuthRoleAddRequest{Name: role1})
-		assert.NoError(t, err)
+		authClient.RoleGrantPermission(role1, []byte("123"), nil, client.PermissionType(client.PermRead))
+		authClient.RoleGrantPermission(role1, []byte("abc"), nil, client.PermissionType(client.PermWrite))
+		authClient.RoleGrantPermission(role1, []byte("hi"), []byte("hjj"), client.PermissionType(client.PermReadWrite))
+		authClient.RoleGrantPermission(role1, []byte("pp"), []byte("pq"), client.PermissionType(client.PermWrite))
+		authClient.RoleGrantPermission(role1, nil, nil, client.PermissionType(client.PermRead))
 
-		_, err = authClient.RoleGrantPermission(&xlineapi.AuthRoleGrantPermissionRequest{
-			Name: role1,
-			Perm: perm1,
-		})
-		assert.NoError(t, err)
-		_, err = authClient.RoleGrantPermission(&xlineapi.AuthRoleGrantPermissionRequest{
-			Name: role1,
-			Perm: perm2,
-		})
-		assert.NoError(t, err)
-		_, err = authClient.RoleGrantPermission(&xlineapi.AuthRoleGrantPermissionRequest{
-			Name: role1,
-			Perm: perm3,
-		})
-		assert.NoError(t, err)
-		_, err = authClient.RoleGrantPermission(&xlineapi.AuthRoleGrantPermissionRequest{
-			Name: role1,
-			Perm: perm4,
-		})
-		assert.NoError(t, err)
-		_, err = authClient.RoleGrantPermission(&xlineapi.AuthRoleGrantPermissionRequest{
-			Name: role1,
-			Perm: perm5,
-		})
-		assert.NoError(t, err)
-
-		res, err := authClient.RoleGet(&xlineapi.AuthRoleGetRequest{Role: role1})
-		assert.NoError(t, err)
-		assert.NotNil(t, res)
+		res, _ := authClient.RoleGet(role1)
 		assert.Len(t, res.Perm, 5)
 
 		// revoke all permission
-		_, err = authClient.RoleRevokePermission(&xlineapi.AuthRoleRevokePermissionRequest{
-			Role: role1,
-			Key:  []byte("123"),
-		})
-		assert.NoError(t, err)
-		_, err = authClient.RoleRevokePermission(&xlineapi.AuthRoleRevokePermissionRequest{
-			Role:     role1,
-			Key:      []byte("abc"),
-			RangeEnd: []byte{0},
-		})
-		assert.NoError(t, err)
-		_, err = authClient.RoleRevokePermission(&xlineapi.AuthRoleRevokePermissionRequest{
-			Role:     role1,
-			Key:      []byte("hi"),
-			RangeEnd: []byte("hjj"),
-		})
-		assert.NoError(t, err)
-		_, err = authClient.RoleRevokePermission(&xlineapi.AuthRoleRevokePermissionRequest{
-			Role:     role1,
-			Key:      []byte("pp"),
-			RangeEnd: []byte("pq"),
-		})
-		assert.NoError(t, err)
-		_, err = authClient.RoleRevokePermission(&xlineapi.AuthRoleRevokePermissionRequest{
-			Role:     role1,
-			Key:      []byte{0},
-			RangeEnd: []byte{0},
-		})
-		assert.NoError(t, err)
+		authClient.RoleRevokePermission(role1, []byte("123"), nil)
+		authClient.RoleRevokePermission(role1, []byte("abc"), nil)
+		authClient.RoleRevokePermission(role1, []byte("hi"), []byte("hjj"))
+		authClient.RoleRevokePermission(role1, []byte("pp"), []byte("pq"))
+		authClient.RoleRevokePermission(role1, nil, nil)
 
-		res, err = authClient.RoleGet(&xlineapi.AuthRoleGetRequest{Role: role1})
-		assert.NoError(t, err)
-		assert.NotNil(t, res)
+		res, _ = authClient.RoleGet(role1)
 		assert.Empty(t, res.Perm)
 
-		_, err = authClient.RoleDelete(&xlineapi.AuthRoleDeleteRequest{Role: role1})
-		assert.NoError(t, err)
+		authClient.RoleDelete(role1)
 	})
 }

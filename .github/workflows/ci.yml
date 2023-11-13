@@ -50,6 +50,7 @@ jobs:
         uses: golangci/golangci-lint-action@v3
         with:
           version: v1.54.2
+          working-directory: ./client/      
 
   test:
     name: Test Sample Validation
@@ -72,6 +73,7 @@ jobs:
       - name: Run tests
         run: GOLANG_PROTOBUF_REGISTRATION_CONFLICT="ignore"
            go test
+           ./tests/kv_test.go
            -coverpkg=./client
            -coverprofile=coverage.out
            -covermode=atomic

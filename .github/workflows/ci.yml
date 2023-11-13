@@ -73,11 +73,11 @@ jobs:
       - name: Run tests
         run: GOLANG_PROTOBUF_REGISTRATION_CONFLICT="ignore"
            go test
-           ./tests/kv_test.go
            -coverpkg=./client
            -coverprofile=coverage.out
            -covermode=atomic
-           ./tests/
+           ./tests/kv_test.go
+           ./tests/auth_test.go
         env:
           GO111MODULE: 'auto'
 

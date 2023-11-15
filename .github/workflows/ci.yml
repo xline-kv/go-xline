@@ -78,6 +78,7 @@ jobs:
            -covermode=atomic
            ./tests/kv_test.go
            ./tests/auth_test.go
+           ./tests/lease_test.go
         env:
           GO111MODULE: 'auto'
 

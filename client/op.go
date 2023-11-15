@@ -490,3 +490,45 @@ func getPrefix(key []byte) []byte {
 }
 
 var noPrefixEnd = []byte{0}
+
+// LeaseOp represents an Operation that lease can execute.
+type LeaseOp struct {
+	id int64
+
+	// for Grant
+	ttl int64
+
+	// for TimeToLive
+	attachedKeys bool
+}
+
+// LeaseOption configures lease operations.
+type LeaseOption func(*LeaseOp)
+
+func (op *LeaseOp) applyOpts(opts []LeaseOption) {
+	for _, opt := range opts {
+		opt(op)
+	}
+}
+
+func toTTLReq(id int64, opts ...LeaseOption) *pb.LeaseTimeToLiveRequest {
+	req := &LeaseOp{id: id}
+	req.applyOpts(opts)
+	return &pb.LeaseTimeToLiveRequest{ID: int64(id), Keys: req.attachedKeys}
+}
+
+func toGrantReq(ttl int64, opts ...LeaseOption) *pb.LeaseGrantRequest {
+	req := &LeaseOp{ttl: ttl}
+	req.applyOpts(opts)
+	return &pb.LeaseGrantRequest{TTL: ttl, ID: req.id}
+}
+
+// WithID is used to specify the lease ID, otherwise it is automatically generated.
+func WithID(id int64) LeaseOption {
+	return func(op *LeaseOp) { op.id = id }
+}
+
+// WithAttachedKeys makes TimeToLive list the keys attached to the given lease ID.
+func WithAttachedKeys() LeaseOption {
+	return func(op *LeaseOp) { op.attachedKeys = true }
+}

@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -238,30 +239,19 @@ func (c *lockClient) waitDelete(pfx string, myRev int64) {
 			return
 		}
 
-		watcher, _ := c.watchClient.Watch()
-		err = watcher.Send(&xlineapi.WatchRequest{
-			RequestUnion: &xlineapi.WatchRequest_CreateRequest{
-				CreateRequest: &xlineapi.WatchCreateRequest{
-					Key: lastKey,
-				},
-			},
-		})
-		if err != nil {
-			logger.Warn("Watch lease ID fail.", zap.Error(err))
-		}
-		for {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		watcher, _ := c.watchClient.Watch(ctx, lastKey)
+		for r := range watcher {
 			f := false
-			watchRes, err := watcher.Recv()
-			if err != nil {
-				logger.Warn("Watch lease ID fail.", zap.Error(err))
-			}
-			for _, e := range watchRes.Events {
+			for _, e := range r.Events {
 				if e.Type == xlineapi.Event_DELETE {
 					f = true
 					break
 				}
 			}
 			if f {
+				cancel()
 				break
 			}
 		}

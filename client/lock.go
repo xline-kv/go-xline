@@ -101,7 +101,7 @@ func (c *lockClient) lockInner(
 		if err == nil {
 			res := res.CommandResp.GetRangeResponse()
 			if len(res.Kvs) == 0 {
-				return nil, errors.New("Rpc error session expired")
+				return nil, errors.New("rpc error session expired")
 			}
 			header = res.Header
 		} else {
@@ -128,7 +128,7 @@ func (c *lockClient) lockInner(
 func (c *lockClient) Lock(request LockRequest) (*xlineapi.LockResponse, error) {
 	leaseId := request.Inner.Lease
 	if leaseId == 0 {
-		res, err := c.leaseClient.Grant(&xlineapi.LeaseGrantRequest{TTL: request.TTL})
+		res, err := c.leaseClient.Grant(request.TTL)
 		if err != nil {
 			return nil, err
 		}

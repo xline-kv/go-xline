@@ -58,15 +58,15 @@ func TestAuthUser(t *testing.T) {
 		role1 := "role1"
 		role2 := "role2"
 
-		_, err := authClient.RoleAdd(role1)
-		_, err = authClient.RoleAdd(role2)
+		authClient.RoleAdd(role1)
+		authClient.RoleAdd(role2)
 
 		_, err = authClient.RoleGet(role1)
 		assert.NoError(t, err)
 		_, err = authClient.RoleGet(role2)
 		assert.NoError(t, err)
 
-		res, err := authClient.RoleList()
+		res, _ := authClient.RoleList()
 		assert.Equal(t, []string{role1, role2}, res.Roles)
 
 		authClient.RoleDelete(role1)

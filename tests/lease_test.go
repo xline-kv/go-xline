@@ -50,6 +50,7 @@ func TestLeaseUser(t *testing.T) {
 		id := res1.ID
 
 		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 		stream, _ := leaseClient.KeepAlive(ctx, id)
 		for res2 := range stream {
 			assert.Equal(t, id, res2.ID)

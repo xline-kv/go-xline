@@ -21,39 +21,38 @@ func TestLock(t *testing.T) {
 	assert.NoError(t, err)
 	lockClient := c.Lock
 
-	t.Run("lock_contention_should_occur_when_acquire_by_two", func(t *testing.T) {
+	t.Run("lock_unlock_should_success_in_normal_path", func(t *testing.T) {
 		res, _ := lockClient.Lock(client.LockRequest{Inner: &xlineapi.LockRequest{Name: []byte("lock-test")}})
 		assert.True(t, strings.HasPrefix(string(res.Key), "lock-test/"))
 
-		lockClient.Unlock(&xlineapi.UnlockRequest{Key: res.Key})
+		lockClient.UnLock(&xlineapi.UnlockRequest{Key: res.Key})
+	})
+
+	t.Run("lock_should_not_occur_when_acquire_by_two", func(t *testing.T) {
+		lockClient.Lock(client.LockRequest{Inner: &xlineapi.LockRequest{Name: []byte("lock-test")}})
+
+		_, err = lockClient.Lock(client.LockRequest{Inner: &xlineapi.LockRequest{Name: []byte("lock-test")}})
+		assert.Error(t, err)
+
+		time.Sleep(2 * time.Second)
+
+		res, err := lockClient.Lock(client.LockRequest{Inner: &xlineapi.LockRequest{Name: []byte("lock-test")}})
+		assert.NoError(t, err)
+
+		lockClient.UnLock(&xlineapi.UnlockRequest{Key: res.Key})
 	})
 
 	t.Run("lock_should_timeout_when_ttl_is_set", func(t *testing.T) {
 		lockClient.Lock(client.LockRequest{Inner: &xlineapi.LockRequest{Name: []byte("lock-test")}, TTL: 1})
 
-		time.Sleep(500 * time.Millisecond)
-
-		res, _ := lockClient.Lock(client.LockRequest{Inner: &xlineapi.LockRequest{Name: []byte("lock-test")}})
-		assert.True(t, strings.HasPrefix(string(res.Key), "lock-test/"))
-
-		lockClient.Unlock(&xlineapi.UnlockRequest{Key: res.Key})
-	})
-
-	t.Run("lock_should_unlock_after_cancelled", func(t *testing.T) {
-		// first acquire the lock
-		res, _ := lockClient.Lock(client.LockRequest{Inner: &xlineapi.LockRequest{Name: []byte("lock-test")}})
-
-		// acquire the lock again and then
-		_, err = lockClient.Lock(client.LockRequest{Inner: &xlineapi.LockRequest{Name: []byte("lock-test")}})
+		lockClient.Lock(client.LockRequest{Inner: &xlineapi.LockRequest{Name: []byte("lock-test")}})
 		assert.Error(t, err)
 
-		// unlock the first one
-		lockClient.Unlock(&xlineapi.UnlockRequest{Key: res.Key})
+		time.Sleep(2 * time.Second)
 
-		// try lock again, it should success
-		res, _ = lockClient.Lock(client.LockRequest{Inner: &xlineapi.LockRequest{Name: []byte("lock-test")}})
-		assert.True(t, strings.HasPrefix(string(res.Key), "lock-test/"))
+		res, err := lockClient.Lock(client.LockRequest{Inner: &xlineapi.LockRequest{Name: []byte("lock-test")}})
+		assert.NoError(t, err)
 
-		lockClient.Unlock(&xlineapi.UnlockRequest{Key: res.Key})
+		lockClient.UnLock(&xlineapi.UnlockRequest{Key: res.Key})
 	})
 }

@@ -102,7 +102,7 @@ func (c *lockClient) lockInner(
 		if err == nil {
 			res := res.CommandResp.GetRangeResponse()
 			if len(res.Kvs) == 0 {
-				return nil, errors.New("rpc error session expired")
+				return nil, errors.New("Rpc error session expired")
 			}
 			header = res.Header
 		} else {
@@ -242,17 +242,12 @@ func (c *lockClient) waitDelete(pfx string, myRev int64) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		watcher, _ := c.watchClient.Watch(ctx, lastKey)
+	outer:
 		for r := range watcher {
-			f := false
 			for _, e := range r.Events {
 				if e.Type == xlineapi.Event_DELETE {
-					f = true
-					break
+					break outer
 				}
-			}
-			if f {
-				cancel()
-				break
 			}
 		}
 	}

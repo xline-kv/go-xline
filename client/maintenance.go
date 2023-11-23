@@ -7,6 +7,13 @@ import (
 	"google.golang.org/grpc"
 )
 
+type Maintenance interface {
+	// Gets a snapshot over a stream
+	Snapshot() (SnapshotClient, error)
+}
+
+type SnapshotClient xlineapi.Maintenance_SnapshotClient
+
 // Client for Maintenance operations.
 type maintenanceClient struct {
 	// The maintenance RPC client, only communicate with one server at a time
@@ -14,12 +21,12 @@ type maintenanceClient struct {
 }
 
 // Creates a new maintenance client
-func newMaintenanceClient(conn *grpc.ClientConn) maintenanceClient {
-	return maintenanceClient{inner: xlineapi.NewMaintenanceClient(conn)}
+func NewMaintenance(conn *grpc.ClientConn) Maintenance {
+	return &maintenanceClient{inner: xlineapi.NewMaintenanceClient(conn)}
 }
 
 // Gets a snapshot over a stream
-func (c *maintenanceClient) Snapshot() (xlineapi.Maintenance_SnapshotClient, error) {
+func (c *maintenanceClient) Snapshot() (SnapshotClient, error) {
 	client, err := c.inner.Snapshot(context.Background(), &xlineapi.SnapshotRequest{})
-	return client, err
+	return (SnapshotClient)(client), err
 }

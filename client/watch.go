@@ -18,7 +18,7 @@ import (
 	"context"
 	"time"
 
-	xlineapi "github.com/xline-kv/go-xline/api/xline"
+	"github.com/xline-kv/go-xline/api/xline"
 	"github.com/xline-kv/go-xline/xlog"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -26,7 +26,7 @@ import (
 
 type Watch interface {
 	// Watches for events happening or that have happened.
-	Watch(ctx context.Context, key []byte) <-chan *WatchResponse
+	Watch(ctx context.Context, key []byte) (<-chan *WatchResponse, error)
 }
 
 type WatchResponse xlineapi.WatchResponse
@@ -42,8 +42,8 @@ type watchClient struct {
 }
 
 // Creates a new maintenance client
-func newWatchClient(conn *grpc.ClientConn) watchClient {
-	return watchClient{watchClient: xlineapi.NewWatchClient(conn), logger: xlog.GetLogger()}
+func NewWatch(conn *grpc.ClientConn) Watch {
+	return &watchClient{watchClient: xlineapi.NewWatchClient(conn), logger: xlog.GetLogger()}
 }
 
 // Watches for events happening or that have happened.

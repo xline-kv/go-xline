@@ -22,7 +22,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	pb "github.com/xline-kv/go-xline/api/xline"
+	xlineapi "github.com/xline-kv/go-xline/api/xline"
 	"golang.org/x/crypto/pbkdf2"
 )
 
@@ -83,33 +83,33 @@ type Auth interface {
 }
 
 type (
-	AuthEnableResponse               pb.AuthEnableResponse
-	AuthDisableResponse              pb.AuthDisableResponse
-	AuthStatusResponse               pb.AuthStatusResponse
-	AuthenticateResponse             pb.AuthenticateResponse
-	AuthUserAddResponse              pb.AuthUserAddResponse
-	AuthUserGetResponse              pb.AuthUserGetResponse
-	AuthUserListResponse             pb.AuthUserListResponse
-	AuthUserDeleteResponse           pb.AuthUserDeleteResponse
-	AuthUserChangePasswordResponse   pb.AuthUserChangePasswordResponse
-	AuthUserGrantRoleResponse        pb.AuthUserGrantRoleResponse
-	AuthUserRevokeRoleResponse       pb.AuthUserRevokeRoleResponse
-	AuthRoleAddResponse              pb.AuthRoleAddResponse
-	AuthRoleGetResponse              pb.AuthRoleGetResponse
-	AuthRoleListResponse             pb.AuthRoleListResponse
-	AuthRoleDeleteResponse           pb.AuthRoleDeleteResponse
-	AuthRoleGrantPermissionResponse  pb.AuthRoleGrantPermissionResponse
-	AuthRoleRevokePermissionResponse pb.AuthRoleRevokePermissionResponse
+	AuthEnableResponse               xlineapi.AuthEnableResponse
+	AuthDisableResponse              xlineapi.AuthDisableResponse
+	AuthStatusResponse               xlineapi.AuthStatusResponse
+	AuthenticateResponse             xlineapi.AuthenticateResponse
+	AuthUserAddResponse              xlineapi.AuthUserAddResponse
+	AuthUserGetResponse              xlineapi.AuthUserGetResponse
+	AuthUserListResponse             xlineapi.AuthUserListResponse
+	AuthUserDeleteResponse           xlineapi.AuthUserDeleteResponse
+	AuthUserChangePasswordResponse   xlineapi.AuthUserChangePasswordResponse
+	AuthUserGrantRoleResponse        xlineapi.AuthUserGrantRoleResponse
+	AuthUserRevokeRoleResponse       xlineapi.AuthUserRevokeRoleResponse
+	AuthRoleAddResponse              xlineapi.AuthRoleAddResponse
+	AuthRoleGetResponse              xlineapi.AuthRoleGetResponse
+	AuthRoleListResponse             xlineapi.AuthRoleListResponse
+	AuthRoleDeleteResponse           xlineapi.AuthRoleDeleteResponse
+	AuthRoleGrantPermissionResponse  xlineapi.AuthRoleGrantPermissionResponse
+	AuthRoleRevokePermissionResponse xlineapi.AuthRoleRevokePermissionResponse
 
-	PermissionType pb.Permission_Type
+	PermissionType xlineapi.Permission_Type
 )
 
-type UserAddOptions pb.UserAddOptions
+type UserAddOptions xlineapi.UserAddOptions
 
 const (
-	PermRead      = pb.Permission_READ
-	PermWrite     = pb.Permission_WRITE
-	PermReadWrite = pb.Permission_READWRITE
+	PermRead      = xlineapi.Permission_READ
+	PermWrite     = xlineapi.Permission_WRITE
+	PermReadWrite = xlineapi.Permission_READWRITE
 )
 
 // Client for Auth operations.
@@ -123,20 +123,16 @@ type authClient struct {
 }
 
 // Creates a new `AuthClient`
-func newAuthClient(name string, curpClient curpClient, token string) authClient {
-	return authClient{
-		name:       name,
-		curpClient: curpClient,
-		token:      token,
-	}
+func NewAuth(name string, curpClient curpClient, token string) Auth {
+	return &authClient{name: name, curpClient: curpClient, token: token}
 }
 
 // Enables authentication.
 func (c *authClient) AuthEnable() (*AuthEnableResponse, error) {
-	requestWithToken := pb.RequestWithToken{
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_AuthEnableRequest{
-			AuthEnableRequest: &pb.AuthEnableRequest{},
+		RequestWrapper: &xlineapi.RequestWithToken_AuthEnableRequest{
+			AuthEnableRequest: &xlineapi.AuthEnableRequest{},
 		},
 	}
 	resp, err := c.handleReq(&requestWithToken, false)
@@ -150,10 +146,10 @@ func (c *authClient) AuthEnable() (*AuthEnableResponse, error) {
 
 // Disables authentication.
 func (c *authClient) AuthDisable() (*AuthDisableResponse, error) {
-	requestWithToken := pb.RequestWithToken{
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_AuthDisableRequest{
-			AuthDisableRequest: &pb.AuthDisableRequest{},
+		RequestWrapper: &xlineapi.RequestWithToken_AuthDisableRequest{
+			AuthDisableRequest: &xlineapi.AuthDisableRequest{},
 		},
 	}
 	resp, err := c.handleReq(&requestWithToken, false)
@@ -167,10 +163,10 @@ func (c *authClient) AuthDisable() (*AuthDisableResponse, error) {
 
 // Gets authentication status.
 func (c *authClient) AuthStatus() (*AuthStatusResponse, error) {
-	requestWithToken := pb.RequestWithToken{
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_AuthStatusRequest{
-			AuthStatusRequest: &pb.AuthStatusRequest{},
+		RequestWrapper: &xlineapi.RequestWithToken_AuthStatusRequest{
+			AuthStatusRequest: &xlineapi.AuthStatusRequest{},
 		},
 	}
 	resp, err := c.handleReq(&requestWithToken, true)
@@ -182,10 +178,10 @@ func (c *authClient) AuthStatus() (*AuthStatusResponse, error) {
 }
 
 func (c *authClient) Authenticate(name, password string) (*AuthenticateResponse, error) {
-	req := &pb.AuthenticateRequest{Name: name, Password: password}
-	requestWithToken := pb.RequestWithToken{
+	req := &xlineapi.AuthenticateRequest{Name: name, Password: password}
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_AuthenticateRequest{
+		RequestWrapper: &xlineapi.RequestWithToken_AuthenticateRequest{
 			AuthenticateRequest: req,
 		},
 	}
@@ -199,7 +195,7 @@ func (c *authClient) Authenticate(name, password string) (*AuthenticateResponse,
 
 // Add an user
 func (c *authClient) UserAdd(name, password string) (*AuthUserAddResponse, error) {
-	request := &pb.AuthUserAddRequest{Name: name, Password: password}
+	request := &xlineapi.AuthUserAddRequest{Name: name, Password: password}
 	if request.Name == "" {
 		return nil, errors.New("user name is empty")
 	}
@@ -207,9 +203,9 @@ func (c *authClient) UserAdd(name, password string) (*AuthUserAddResponse, error
 	request.HashedPassword = hashedPassword
 	request.Password = ""
 
-	requestWithToken := pb.RequestWithToken{
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_AuthUserAddRequest{
+		RequestWrapper: &xlineapi.RequestWithToken_AuthUserAddRequest{
 			AuthUserAddRequest: request,
 		},
 	}
@@ -222,11 +218,11 @@ func (c *authClient) UserAdd(name, password string) (*AuthUserAddResponse, error
 }
 
 // Add an user with option
-func (c *authClient) UserAddWithOption(name, password string, options *UserAddOptions) (*AuthUserAddResponse, error) {
-	request := &pb.AuthUserAddRequest{
+func (c *authClient) UserAddWithOptions(name, password string, options *UserAddOptions) (*AuthUserAddResponse, error) {
+	request := &xlineapi.AuthUserAddRequest{
 		Name:     name,
 		Password: password,
-		Options:  (*pb.UserAddOptions)(options),
+		Options:  (*xlineapi.UserAddOptions)(options),
 	}
 	if request.Name == "" {
 		return nil, errors.New("user name is empty")
@@ -242,9 +238,9 @@ func (c *authClient) UserAddWithOption(name, password string, options *UserAddOp
 	request.HashedPassword = hashedPassword
 	request.Password = ""
 
-	requestWithToken := pb.RequestWithToken{
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_AuthUserAddRequest{
+		RequestWrapper: &xlineapi.RequestWithToken_AuthUserAddRequest{
 			AuthUserAddRequest: request,
 		},
 	}
@@ -258,10 +254,10 @@ func (c *authClient) UserAddWithOption(name, password string, options *UserAddOp
 
 // Gets the user info by the user name
 func (c *authClient) UserGet(name string) (*AuthUserGetResponse, error) {
-	request := &pb.AuthUserGetRequest{Name: name}
-	requestWithToken := pb.RequestWithToken{
+	request := &xlineapi.AuthUserGetRequest{Name: name}
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_AuthUserGetRequest{
+		RequestWrapper: &xlineapi.RequestWithToken_AuthUserGetRequest{
 			AuthUserGetRequest: request,
 		},
 	}
@@ -276,10 +272,10 @@ func (c *authClient) UserGet(name string) (*AuthUserGetResponse, error) {
 
 // Lists all users
 func (c *authClient) UserList() (*AuthUserListResponse, error) {
-	requestWithToken := pb.RequestWithToken{
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_AuthUserListRequest{
-			AuthUserListRequest: &pb.AuthUserListRequest{},
+		RequestWrapper: &xlineapi.RequestWithToken_AuthUserListRequest{
+			AuthUserListRequest: &xlineapi.AuthUserListRequest{},
 		},
 	}
 	resp, err := c.handleReq(&requestWithToken, true)
@@ -292,10 +288,10 @@ func (c *authClient) UserList() (*AuthUserListResponse, error) {
 
 // Deletes the given key from the key-value store
 func (c *authClient) UserDelete(name string) (*AuthUserDeleteResponse, error) {
-	request := &pb.AuthUserDeleteRequest{Name: name}
-	requestWithToken := pb.RequestWithToken{
+	request := &xlineapi.AuthUserDeleteRequest{Name: name}
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_AuthUserDeleteRequest{
+		RequestWrapper: &xlineapi.RequestWithToken_AuthUserDeleteRequest{
 			AuthUserDeleteRequest: request,
 		},
 	}
@@ -310,7 +306,7 @@ func (c *authClient) UserDelete(name string) (*AuthUserDeleteResponse, error) {
 
 // Change password for an user.
 func (c *authClient) UserChangePassword(name, password string) (*AuthUserChangePasswordResponse, error) {
-	request := &pb.AuthUserChangePasswordRequest{Name: name, Password: password}
+	request := &xlineapi.AuthUserChangePasswordRequest{Name: name, Password: password}
 	if request.Password == "" {
 		return nil, errors.New("user password is empty")
 	}
@@ -318,9 +314,9 @@ func (c *authClient) UserChangePassword(name, password string) (*AuthUserChangeP
 	request.HashedPassword = hashedPassword
 	request.Password = ""
 
-	requestWithToken := pb.RequestWithToken{
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_AuthUserChangePasswordRequest{
+		RequestWrapper: &xlineapi.RequestWithToken_AuthUserChangePasswordRequest{
 			AuthUserChangePasswordRequest: request,
 		},
 	}
@@ -336,10 +332,10 @@ func (c *authClient) UserChangePassword(name, password string) (*AuthUserChangeP
 
 // Grant role for an user
 func (c *authClient) UserGrantRole(user, role string) (*AuthUserGrantRoleResponse, error) {
-	request := &pb.AuthUserGrantRoleRequest{User: user, Role: role}
-	requestWithToken := pb.RequestWithToken{
+	request := &xlineapi.AuthUserGrantRoleRequest{User: user, Role: role}
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_AuthUserGrantRoleRequest{
+		RequestWrapper: &xlineapi.RequestWithToken_AuthUserGrantRoleRequest{
 			AuthUserGrantRoleRequest: request,
 		},
 	}
@@ -354,10 +350,10 @@ func (c *authClient) UserGrantRole(user, role string) (*AuthUserGrantRoleRespons
 
 // Revoke role for an user.
 func (c *authClient) UserRevokeRole(name, role string) (*AuthUserRevokeRoleResponse, error) {
-	request := &pb.AuthUserRevokeRoleRequest{Name: name, Role: role}
-	requestWithToken := pb.RequestWithToken{
+	request := &xlineapi.AuthUserRevokeRoleRequest{Name: name, Role: role}
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_AuthUserRevokeRoleRequest{
+		RequestWrapper: &xlineapi.RequestWithToken_AuthUserRevokeRoleRequest{
 			AuthUserRevokeRoleRequest: request,
 		},
 	}
@@ -372,14 +368,14 @@ func (c *authClient) UserRevokeRole(name, role string) (*AuthUserRevokeRoleRespo
 
 // Adds role.
 func (c *authClient) RoleAdd(name string) (*AuthRoleAddResponse, error) {
-	request := &pb.AuthRoleAddRequest{Name: name}
+	request := &xlineapi.AuthRoleAddRequest{Name: name}
 	if request.Name == "" {
 		return nil, errors.New("role name is empty")
 	}
 
-	requestWithToken := pb.RequestWithToken{
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_AuthRoleAddRequest{
+		RequestWrapper: &xlineapi.RequestWithToken_AuthRoleAddRequest{
 			AuthRoleAddRequest: request,
 		},
 	}
@@ -394,10 +390,10 @@ func (c *authClient) RoleAdd(name string) (*AuthRoleAddResponse, error) {
 
 // Gets role
 func (c *authClient) RoleGet(role string) (*AuthRoleGetResponse, error) {
-	request := &pb.AuthRoleGetRequest{Role: role}
-	requestWithToken := pb.RequestWithToken{
+	request := &xlineapi.AuthRoleGetRequest{Role: role}
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_AuthRoleGetRequest{
+		RequestWrapper: &xlineapi.RequestWithToken_AuthRoleGetRequest{
 			AuthRoleGetRequest: request,
 		},
 	}
@@ -411,10 +407,10 @@ func (c *authClient) RoleGet(role string) (*AuthRoleGetResponse, error) {
 
 // Lists role
 func (c *authClient) RoleList() (*AuthRoleListResponse, error) {
-	requestWithToken := pb.RequestWithToken{
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_AuthRoleListRequest{
-			AuthRoleListRequest: &pb.AuthRoleListRequest{},
+		RequestWrapper: &xlineapi.RequestWithToken_AuthRoleListRequest{
+			AuthRoleListRequest: &xlineapi.AuthRoleListRequest{},
 		},
 	}
 	resp, err := c.handleReq(&requestWithToken, true)
@@ -427,10 +423,10 @@ func (c *authClient) RoleList() (*AuthRoleListResponse, error) {
 
 // Deletes role.
 func (c *authClient) RoleDelete(role string) (*AuthRoleDeleteResponse, error) {
-	request := &pb.AuthRoleDeleteRequest{Role: role}
-	requestWithToken := pb.RequestWithToken{
+	request := &xlineapi.AuthRoleDeleteRequest{Role: role}
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_AuthRoleDeleteRequest{
+		RequestWrapper: &xlineapi.RequestWithToken_AuthRoleDeleteRequest{
 			AuthRoleDeleteRequest: request,
 		},
 	}
@@ -445,20 +441,20 @@ func (c *authClient) RoleDelete(role string) (*AuthRoleDeleteResponse, error) {
 
 // Grants role permission
 func (c *authClient) RoleGrantPermission(user string, key, rangeEnd []byte, permType PermissionType) (*AuthRoleGrantPermissionResponse, error) {
-	request := &pb.AuthRoleGrantPermissionRequest{
-		Name: user, Perm: &pb.Permission{
+	request := &xlineapi.AuthRoleGrantPermissionRequest{
+		Name: user, Perm: &xlineapi.Permission{
 			Key:      []byte(key),
 			RangeEnd: []byte(rangeEnd),
-			PermType: pb.Permission_Type(permType),
+			PermType: xlineapi.Permission_Type(permType),
 		},
 	}
 	if request.Perm == nil {
 		return nil, errors.New("permission not given")
 	}
 
-	requestWithToken := pb.RequestWithToken{
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_AuthRoleGrantPermissionRequest{
+		RequestWrapper: &xlineapi.RequestWithToken_AuthRoleGrantPermissionRequest{
 			AuthRoleGrantPermissionRequest: request,
 		},
 	}
@@ -473,14 +469,14 @@ func (c *authClient) RoleGrantPermission(user string, key, rangeEnd []byte, perm
 
 // Revokes role permission
 func (c *authClient) RoleRevokePermission(role string, key, rangeEnd []byte) (*AuthRoleRevokePermissionResponse, error) {
-	request := &pb.AuthRoleRevokePermissionRequest{
+	request := &xlineapi.AuthRoleRevokePermissionRequest{
 		Role:     role,
 		Key:      []byte(key),
 		RangeEnd: []byte(rangeEnd),
 	}
-	requestWithToken := pb.RequestWithToken{
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_AuthRoleRevokePermissionRequest{
+		RequestWrapper: &xlineapi.RequestWithToken_AuthRoleRevokePermissionRequest{
 			AuthRoleRevokePermissionRequest: request,
 		},
 	}
@@ -494,9 +490,9 @@ func (c *authClient) RoleRevokePermission(role string, key, rangeEnd []byte) (*A
 }
 
 // Send request using fast path
-func (c authClient) handleReq(req *pb.RequestWithToken, useFastPath bool) (*ProposeResponse, error) {
+func (c *authClient) handleReq(req *xlineapi.RequestWithToken, useFastPath bool) (*ProposeResponse, error) {
 	proposeId := c.generateProposeId()
-	cmd := pb.Command{Request: req, ProposeId: proposeId}
+	cmd := xlineapi.Command{Request: req, ProposeId: proposeId}
 
 	if useFastPath {
 		res, err := c.curpClient.propose(&cmd, true)
@@ -515,7 +511,7 @@ func (c authClient) handleReq(req *pb.RequestWithToken, useFastPath bool) (*Prop
 }
 
 // Generate hash of the password
-func (c authClient) hashPassword(password []byte) string {
+func (c *authClient) hashPassword(password []byte) string {
 	const (
 		pbkdf2Iter   = 10000
 		pbkdf2KeyLen = 32
@@ -539,6 +535,6 @@ func (c authClient) hashPassword(password []byte) string {
 }
 
 // Generate a new `ProposeId`
-func (c authClient) generateProposeId() string {
+func (c *authClient) generateProposeId() string {
 	return fmt.Sprintf("%s-%s", c.name, uuid.New().String())
 }

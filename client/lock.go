@@ -7,34 +7,49 @@ import (
 	"math"
 
 	"github.com/google/uuid"
-	xlineapi "github.com/xline-kv/go-xline/api/xline"
+	"github.com/xline-kv/go-xline/api/xline"
 	"github.com/xline-kv/go-xline/xlog"
 	"go.uber.org/zap"
 )
+
+type Lock interface {
+	// Acquires a distributed shared lock on a given named lock.
+	// On success, it will return a unique key that exists so long as the
+	// lock is held by the caller. This key can be used in conjunction with
+	// transactions to safely ensure updates to Xline only occur while holding
+	// lock ownership. The lock is held until Unlock is called on the key or the
+	// lease associate with the owner expires.
+	Lock(request LockRequest) (*xlineapi.LockResponse, error)
+
+	// Takes a key returned by Lock and releases the hold on lock. The
+	// next Lock caller waiting for the lock will then be woken up and given
+	// ownership of the lock.
+	UnLock(request *xlineapi.UnlockRequest) (*xlineapi.UnlockResponse, error)
+}
 
 // Client for Lock operations.
 type lockClient struct {
 	// Name of the LockClient
 	name string
 	// The client running the CURP protocol, communicate with all servers.
-	curpClient curpClient
+	curpClient *curpClient
 	// The lease client
-	leaseClient leaseClient
+	leaseClient Lease
 	// The watch client
-	watchClient watchClient
+	watchClient Watch
 	// Auth token
 	token string
 }
 
 // Creates a new `LockClient`
-func newLockClient(
+func NewLock(
 	name string,
-	curpClient curpClient,
-	innerLeaseClient leaseClient,
-	innerWatchClient watchClient,
+	curpClient *curpClient,
+	innerLeaseClient Lease,
+	innerWatchClient Watch,
 	token string,
-) lockClient {
-	return lockClient{
+) Lock {
+	return &lockClient{
 		name:        name,
 		curpClient:  curpClient,
 		leaseClient: innerLeaseClient,
@@ -102,7 +117,7 @@ func (c *lockClient) lockInner(
 		if err == nil {
 			res := res.CommandResp.GetRangeResponse()
 			if len(res.Kvs) == 0 {
-				return nil, errors.New("Rpc error session expired")
+				return nil, errors.New("rpc error session expired")
 			}
 			header = res.Header
 		} else {
@@ -146,7 +161,7 @@ func (c *lockClient) Lock(request LockRequest) (*xlineapi.LockResponse, error) {
 // Takes a key returned by Lock and releases the hold on lock. The
 // next Lock caller waiting for the lock will then be woken up and given
 // ownership of the lock.
-func (c *lockClient) Unlock(request *xlineapi.UnlockRequest) (*xlineapi.UnlockResponse, error) {
+func (c *lockClient) UnLock(request *xlineapi.UnlockRequest) (*xlineapi.UnlockResponse, error) {
 	header, err := c.deleteKey(request.Key)
 	if err != nil {
 		return nil, err

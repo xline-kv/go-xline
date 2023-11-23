@@ -29,7 +29,7 @@ func TestPut(t *testing.T) {
 	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
 
 	xlineClient, _ := client.Connect(curpMembers)
-	kvClient := xlineClient.Kv
+	kvClient := xlineClient.KV
 
 	kvClient.Put([]byte("put"), []byte("123"))
 
@@ -52,7 +52,7 @@ func TestGet(t *testing.T) {
 	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
 
 	xlineClient, _ := client.Connect(curpMembers)
-	kvClient := xlineClient.Kv
+	kvClient := xlineClient.KV
 
 	kvClient.Put([]byte("get10"), []byte("10"))
 	kvClient.Put([]byte("get11"), []byte("11"))
@@ -95,7 +95,7 @@ func TestDelete(t *testing.T) {
 	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
 
 	xlineClient, _ := client.Connect(curpMembers)
-	kvClient := xlineClient.Kv
+	kvClient := xlineClient.KV
 
 	kvClient.Put([]byte("del10"), []byte("10"))
 	kvClient.Put([]byte("del11"), []byte("11"))
@@ -146,7 +146,7 @@ func TestTxn(t *testing.T) {
 	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
 
 	xlineClient, _ := client.Connect(curpMembers)
-	kvClient := xlineClient.Kv
+	kvClient := xlineClient.KV
 
 	kvClient.Put([]byte("txn01"), []byte("01"))
 
@@ -191,7 +191,7 @@ func TestCompact(t *testing.T) {
 	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
 
 	xlineClient, _ := client.Connect(curpMembers)
-	kvClient := xlineClient.Kv
+	kvClient := xlineClient.KV
 
 	kvClient.Put([]byte("compact"), []byte("0"))
 	putRes, _ := kvClient.Put([]byte("compact"), []byte("1"))

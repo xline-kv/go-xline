@@ -32,7 +32,7 @@ func TestWatch(t *testing.T) {
 
 	client, err := client.Connect(curpMembers)
 	assert.NoError(t, err)
-	kvClient := client.Kv
+	kvClient := client.KV
 	watchClient := client.Watch
 
 	t.Run("watch_should_receive_consistent_events", func(t *testing.T) {

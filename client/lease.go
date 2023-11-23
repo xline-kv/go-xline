@@ -20,18 +20,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	pb "github.com/xline-kv/go-xline/api/xline"
+	"github.com/xline-kv/go-xline/api/xline"
 	"github.com/xline-kv/go-xline/xlog"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
 
 type (
-	LeaseGrantResponse      pb.LeaseGrantResponse
-	LeaseRevokeResponse     pb.LeaseRevokeResponse
-	LeaseKeepAliveResponse  pb.LeaseKeepAliveResponse
-	LeaseTimeToLiveResponse pb.LeaseTimeToLiveResponse
-	LeaseLeasesResponse     pb.LeaseLeasesResponse
+	LeaseGrantResponse      xlineapi.LeaseGrantResponse
+	LeaseRevokeResponse     xlineapi.LeaseRevokeResponse
+	LeaseKeepAliveResponse  xlineapi.LeaseKeepAliveResponse
+	LeaseTimeToLiveResponse xlineapi.LeaseTimeToLiveResponse
+	LeaseLeasesResponse     xlineapi.LeaseLeasesResponse
 )
 
 type Lease interface {
@@ -47,7 +47,7 @@ type Lease interface {
 
 	// KeepAliveOnce renews the lease once. The response corresponds to the first message from calling KeepAlive.
 	// In most of the cases, Keepalive should be used instead of KeepAliveOnce.
-	KeepAliveOnce(ctx context.Context, id int64) (*LeaseKeepAliveResponse, error)
+	KeepAliveOnce(id int64) (*LeaseKeepAliveResponse, error)
 
 	// TimeToLive retrieves the lease information of the given lease ID.
 	// When passed WithAttachedKeys(), TimeToLive will list the keys attached to the given lease ID.
@@ -64,7 +64,7 @@ type leaseClient struct {
 	// The client running the CURP protocol, communicate with all servers.
 	curpClient curpClient
 	// The lease RPC client, only communicate with one server at a time
-	leaseClient pb.LeaseClient
+	leaseClient xlineapi.LeaseClient
 	// Auth token
 	token string
 	// Lease Id generator
@@ -76,17 +76,17 @@ type leaseClient struct {
 const keepAliveInterval = 1 * time.Millisecond
 
 // Creates a new `LeaseClient`
-func newLeaseClient(
+func NewLease(
 	name string,
 	curpClient curpClient,
 	conn *grpc.ClientConn,
 	token string,
 	idGen leaseIdGenerator,
-) leaseClient {
-	return leaseClient{
+) Lease {
+	return &leaseClient{
 		name:        name,
 		curpClient:  curpClient,
-		leaseClient: pb.NewLeaseClient(conn),
+		leaseClient: xlineapi.NewLeaseClient(conn),
 		token:       token,
 		idGen:       idGen,
 		logger:      xlog.GetLogger(),
@@ -101,14 +101,14 @@ func (c *leaseClient) Grant(ttl int64, opts ...LeaseOption) (*LeaseGrantResponse
 	if request.ID == 0 {
 		request.ID = c.idGen.next()
 	}
-	requestWithToken := pb.RequestWithToken{
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_LeaseGrantRequest{
+		RequestWrapper: &xlineapi.RequestWithToken_LeaseGrantRequest{
 			LeaseGrantRequest: request,
 		},
 	}
 	proposeId := c.generateProposeId()
-	cmd := pb.Command{Request: &requestWithToken, ProposeId: proposeId}
+	cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: proposeId}
 
 	res, err := c.curpClient.propose(&cmd, true)
 	if err != nil {
@@ -119,14 +119,14 @@ func (c *leaseClient) Grant(ttl int64, opts ...LeaseOption) (*LeaseGrantResponse
 
 // Revokes a lease. All keys attached to the lease will expire and be deleted.
 func (c *leaseClient) Revoke(id int64) (*LeaseRevokeResponse, error) {
-	requestWithToken := pb.RequestWithToken{
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_LeaseRevokeRequest{
-			LeaseRevokeRequest: &pb.LeaseRevokeRequest{ID: id},
+		RequestWrapper: &xlineapi.RequestWithToken_LeaseRevokeRequest{
+			LeaseRevokeRequest: &xlineapi.LeaseRevokeRequest{ID: id},
 		},
 	}
 	proposeId := c.generateProposeId()
-	cmd := pb.Command{Request: &requestWithToken, ProposeId: proposeId}
+	cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: proposeId}
 
 	res, err := c.curpClient.propose(&cmd, true)
 	if err != nil {
@@ -151,7 +151,7 @@ func (c *leaseClient) KeepAlive(ctx context.Context, id int64) (<-chan *LeaseKee
 			case <-ctx.Done():
 				return
 			default:
-				err = stream.Send(&pb.LeaseKeepAliveRequest{ID: id})
+				err = stream.Send(&xlineapi.LeaseKeepAliveRequest{ID: id})
 				if err != nil {
 					c.logger.Error("keep alive fail", zap.Error(err))
 				}
@@ -185,7 +185,7 @@ func (c *leaseClient) KeepAliveOnce(id int64) (*LeaseKeepAliveResponse, error) {
 		}
 	}()
 
-	err = stream.Send(&pb.LeaseKeepAliveRequest{ID: id})
+	err = stream.Send(&xlineapi.LeaseKeepAliveRequest{ID: id})
 	if err != nil {
 		return nil, err
 	}
@@ -207,14 +207,14 @@ func (c *leaseClient) TimeToLive(id int64, opts ...LeaseOption) (*LeaseTimeToLiv
 
 // Lists all existing leases.
 func (c *leaseClient) Leases() (*LeaseLeasesResponse, error) {
-	requestWithToken := pb.RequestWithToken{
+	requestWithToken := xlineapi.RequestWithToken{
 		Token: &c.token,
-		RequestWrapper: &pb.RequestWithToken_LeaseLeasesRequest{
-			LeaseLeasesRequest: &pb.LeaseLeasesRequest{},
+		RequestWrapper: &xlineapi.RequestWithToken_LeaseLeasesRequest{
+			LeaseLeasesRequest: &xlineapi.LeaseLeasesRequest{},
 		},
 	}
 	proposeId := c.generateProposeId()
-	cmd := pb.Command{Request: &requestWithToken, ProposeId: proposeId}
+	cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: proposeId}
 
 	res, err := c.curpClient.propose(&cmd, true)
 	if err != nil {
@@ -224,6 +224,6 @@ func (c *leaseClient) Leases() (*LeaseLeasesResponse, error) {
 }
 
 // Generate a new `ProposeId`
-func (c leaseClient) generateProposeId() string {
+func (c *leaseClient) generateProposeId() string {
 	return fmt.Sprintf("%s-%s", c.name, uuid.New().String())
 }

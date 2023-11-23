@@ -6,7 +6,7 @@ import (
 	"math/rand"
 	"time"
 
-	xlineapi "github.com/xline-kv/go-xline/api/xline"
+	"github.com/xline-kv/go-xline/api/xline"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -14,17 +14,17 @@ import (
 // Xline client
 type client struct {
 	// Kv client
-	Kv kvClient
+	KV
 	// Auth client
-	Auth authClient
+	Auth
 	// Lease client
-	Lease leaseClient
+	Lease
 	// Watch client
-	Watch watchClient
+	Watch
 	// Maintenance client
-	Maintenance maintenanceClient
+	Maintenance
 	// Lock client
-	Lock lockClient
+	Lock
 }
 
 func Connect(allMembers []string, options ...ClientOptions) (*client, error) {
@@ -65,15 +65,15 @@ func Connect(allMembers []string, options ...ClientOptions) (*client, error) {
 		return nil, err
 	}
 
-	kv := newKvClient(name, *curpClient, token)
-	auth := newAuthClient(name, *curpClient, token)
-	lease := newLeaseClient(name, *curpClient, conn, token, idGen)
-	watch := newWatchClient(conn)
-	maintenance := newMaintenanceClient(conn)
-	lock := newLockClient(name, *curpClient, lease, watch, token)
+	kv := NewKV(name, *curpClient, token)
+	auth := NewAuth(name, *curpClient, token)
+	lease := NewLease(name, *curpClient, conn, token, idGen)
+	watch := NewWatch(conn)
+	maintenance := NewMaintenance(conn)
+	lock := NewLock(name, curpClient, lease, watch, token)
 
 	return &client{
-		Kv:          kv,
+		KV:          kv,
 		Auth:        auth,
 		Lease:       lease,
 		Watch:       watch,

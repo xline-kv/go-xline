@@ -1,13 +1,28 @@
+// Copyright 2023 The xline Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package client
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"time"
 
-	curpapi "github.com/xline-kv/go-xline/api/curp"
-	xlineapi "github.com/xline-kv/go-xline/api/xline"
+	"github.com/xline-kv/go-xline/api/curp"
+	"github.com/xline-kv/go-xline/api/xline"
 	"github.com/xline-kv/go-xline/xlog"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -15,376 +30,458 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+type Curp interface {
+	// Propose the request to servers, if use_fast_path is false, it will wait for the synced index
+	Propose(cmd *xlineapi.Command, useFastPath bool) (*proposeRes, error)
+
+	// Generate a propose id
+	GenProposeID() (*xlineapi.ProposeId, error)
+}
+
 // Protocol client
-type curpClient struct {
-	// Current leader
-	leader uint64
-	// Inner protocol clients
-	inner []curpapi.ProtocolClient
-	// All servers' `Connect`
-	connects map[uint64]string
-	// Curp client timeout settings
-	timeout ClientTimeout
+type protocolClient struct {
+	// local server id. Only use in an inner client.
+	// localServerID ServerId
+	// Current leader and term
+	state *state
+	// All servers's `Connect`
+	connects map[ServerId]*grpc.ClientConn
+	/// Cluster version
+	clusterVersion uint64
+	// Curp client config settings
+	// To keep Command type
+	config *ClientConfig
+	// Logger
+	logger *zap.Logger
 }
 
 // Build client from addresses, this method will fetch all members from servers
-func BuildCurpClientFromAddrs(addrs []string, clientTimeout ClientTimeout) (*curpClient, error) {
-	logger := xlog.GetLogger()
+func BuildCurpClientFromAddrs(addrs []string, config *ClientConfig) (*protocolClient, error) {
+	conns := make(map[ServerId]*grpc.ClientConn)
 
-	var clients []curpapi.ProtocolClient
-
-	for _, addr := range addrs {
-		conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithIdleTimeout(clientTimeout.idleTimeout))
-		if err != nil {
-			logger.Warn("failed to dial grpc", zap.Error(err), zap.String("addr", addr))
-		} else {
-			protocolClient := curpapi.NewProtocolClient(conn)
-			clients = append(clients[:], protocolClient)
-		}
+	if config == nil {
+		return nil, fmt.Errorf("timeout is required")
 	}
 
-	cluster, err := fetchCluster(clients, clientTimeout.proposeTimeout)
+	res, err := fastFetchCluster(addrs, config.ProposeTimeout)
 	if err != nil {
 		return nil, err
 	}
 
-	return &curpClient{
-		inner:    clients,
-		connects: cluster.AllMembers,
-		timeout:  clientTimeout,
-	}, nil
+	for _, node := range res.Members {
+		conn, err := grpc.Dial(node.Addrs[0], grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			return nil, err
+		}
+		conns[node.Id] = conn
+	}
+
+	client := &protocolClient{
+		state:          &state{leader: *res.LeaderId, term: res.Term},
+		config:         config,
+		clusterVersion: res.ClusterVersion,
+		connects:       conns,
+		logger:         xlog.GetLogger(),
+	}
+
+	return client, nil
 }
 
-type fetchClusterRes struct {
-	res *curpapi.FetchClusterResponse
-	err error
-}
+// Fetch cluster from server, return the first `FetchClusterResponse`
+func fastFetchCluster(addrs []string, proposeTimeout time.Duration) (*curpapi.FetchClusterResponse, error) {
+	logger := xlog.GetLogger()
 
-// Fetch cluster from server
-func fetchCluster(protocolClients []curpapi.ProtocolClient, proposeTimeout time.Duration) (*curpapi.FetchClusterResponse, error) {
-	fetchClusterRespCh := make(chan fetchClusterRes)
+	resCh := make(chan *curpapi.FetchClusterResponse)
+	errCh := make(chan error)
 
-	for _, protocolClient := range protocolClients {
-		client := protocolClient
+	for _, addr := range addrs {
+		addr := addr
 		go func() {
+			conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				errCh <- err
+				return
+			}
+			defer conn.Close()
+			protocolClient := curpapi.NewProtocolClient(conn)
 			ctx, cancel := context.WithTimeout(context.Background(), proposeTimeout)
 			defer cancel()
-			res, err := client.FetchCluster(ctx, &curpapi.FetchClusterRequest{})
-			fetchClusterRespCh <- fetchClusterRes{res: res, err: err}
+			res, err := protocolClient.FetchCluster(ctx, &curpapi.FetchClusterRequest{})
+			if err != nil {
+				errCh <- err
+				return
+			}
+			resCh <- res
 		}()
 	}
 
-	for i := 0; i < len(protocolClients); i++ {
-		fetchClusterRes := <-fetchClusterRespCh
-
-		if fetchClusterRes.err != nil {
-			continue
+	for i := 0; i < len(addrs); i++ {
+		select {
+		case res := <-resCh:
+			return res, nil
+		case err := <-errCh:
+			logger.Warn("fetch cluster fail", zap.Error(err))
 		}
-		return fetchClusterRes.res, nil
 	}
-	return nil, errors.New("fetch cluster fail")
-}
 
-type roundRes struct {
-	res *ProposeResponse
-	err error
+	return nil, fmt.Errorf("fetch cluster fail")
 }
 
 // Propose the request to servers, if use_fast_path is false, it will wait for the synced index
-func (c *curpClient) propose(cmd *xlineapi.Command, useFastPath bool) (*ProposeResponse, error) {
-	fastResCh := make(chan *roundRes)
-	slowResCh := make(chan *roundRes)
-
-	go func() {
-		roundRes := c.slowRound(cmd)
-		slowResCh <- roundRes
-	}()
-
-	go func() {
-		roundRes := c.fastRound(cmd)
-		fastResCh <- roundRes
-	}()
-
+func (c *protocolClient) Propose(cmd *xlineapi.Command, useFastPath bool) (*proposeRes, error) {
 	if useFastPath {
-		select {
-		case roundRes := <-fastResCh:
-			if roundRes.res.IsFastRoundSuccess {
-				return roundRes.res, roundRes.err
-			}
-			roundRes = <-slowResCh
-			return roundRes.res, roundRes.err
-		case roundRes := <-slowResCh:
-			return roundRes.res, roundRes.err
+		return c.fastPath(cmd)
+	}
+	return c.slowPath(cmd)
+}
+
+// Fast path of propose
+func (c *protocolClient) fastPath(cmd *xlineapi.Command) (*proposeRes, error) {
+	fastCh := make(chan *fastRoundRes)
+	slowCh := make(chan *slowRoundRes)
+	errCh := make(chan error)
+
+	go func() {
+		res, err := c.fastRound(cmd)
+		if err != nil {
+			errCh <- err
+			return
 		}
-	} else {
-		<-fastResCh
-		roundRes := <-slowResCh
-		return roundRes.res, roundRes.err
+		fastCh <- res
+	}()
+	go func() {
+		res, err := c.slowRound(cmd)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		slowCh <- res
+	}()
+
+	for {
+		select {
+		case res := <-fastCh:
+			if res.isSucc {
+				return &proposeRes{Er: res.er}, nil
+			}
+		case res := <-slowCh:
+			return &proposeRes{Er: res.er, Asr: res.asr}, nil
+		case err := <-errCh:
+			return nil, err
+		}
+	}
+}
+
+// Slow path of propose
+func (c *protocolClient) slowPath(cmd *xlineapi.Command) (*proposeRes, error) {
+	slowCh := make(chan *slowRoundRes)
+	errCh := make(chan error)
+
+	go func() {
+		// nolint: errcheck
+		c.fastRound(cmd)
+	}()
+	go func() {
+		res, err := c.slowRound(cmd)
+		if err != nil {
+			errCh <- err
+		}
+		slowCh <- res
+	}()
+
+	select {
+	case res := <-slowCh:
+		return &proposeRes{Er: res.er, Asr: res.asr}, nil
+	case err := <-errCh:
+		return nil, err
 	}
 }
 
 // The fast round of Curp protocol
 // It broadcast the requests to all the curp servers.
-func (c *curpClient) fastRound(cmd *xlineapi.Command) *roundRes {
-	logger := xlog.GetLogger()
+func (c *protocolClient) fastRound(cmd *xlineapi.Command) (*fastRoundRes, error) {
+	c.logger.Info("fast round started", zap.Any("propose ID", cmd.ProposeId))
 
-	logger.Info("Fast round start.", zap.String("Propose ID:", cmd.ProposeId))
-
-	isReceivedLeaderReq := false
-	isReceivedSuccessRes := 0
-	okCnt := 0
-	var cmdRes xlineapi.CommandResponse
+	resCh := make(chan *curpapi.ProposeResponse)
+	errCh := make(chan error)
+	var exeResult xlineapi.CommandResponse
 	var exeErr xlineapi.ExecuteError
-	proposeCh := make(chan *curpapi.ProposeResponse)
+	var superQuorum = superQuorum(len(c.connects))
+	okCnt := 0
+	isLeaderOK := false
 
-	serializeCmd, err := proto.Marshal(cmd)
+	bcmd, err := proto.Marshal(cmd)
 	if err != nil {
-		return &roundRes{res: nil, err: errors.New("command marshal fail")}
+		return nil, err
+	}
+	req := &curpapi.ProposeRequest{
+		Command:        bcmd,
+		ClusterVersion: c.clusterVersion,
 	}
 
-	for _, protocolClient := range c.inner {
-		client := protocolClient
+	for _, conn := range c.connects {
+		conn := conn
 		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), c.timeout.proposeTimeout)
+			protocolClient := curpapi.NewProtocolClient(conn)
+			ctx, cancel := context.WithTimeout(context.Background(), c.config.ProposeTimeout)
 			defer cancel()
-			res, err := client.Propose(ctx, &curpapi.ProposeRequest{Command: serializeCmd})
+			res, err := protocolClient.Propose(ctx, req)
 			if err != nil {
-				logger.Debug("fast round step fail", zap.Error(err), zap.String("Propose ID:", cmd.ProposeId))
-				proposeCh <- nil
-			} else {
-				proposeCh <- res
+				errCh <- err
+				return
 			}
+			resCh <- res
 		}()
 	}
 
-	for i := 0; i < len(c.inner); i++ {
-		proposeRes := <-proposeCh
-
-		if proposeRes == nil {
-			continue
-		}
-
-		switch proposeResp := proposeRes.ExeResult.(type) {
-		case *curpapi.ProposeResponse_Result:
-			switch cmdResult := proposeResp.Result.Result.(type) {
-			case *curpapi.CmdResult_Er:
-				err := proto.Unmarshal(cmdResult.Er, &cmdRes)
-				if err != nil {
-					logger.Debug("fast round step fail", zap.Error(err), zap.String("Propose ID:", cmd.ProposeId))
-				} else {
-					isReceivedLeaderReq = true
-					isReceivedSuccessRes = 1
-					okCnt++
+	for i := 0; i < len(c.connects); i++ {
+		select {
+		case res := <-resCh:
+			switch pr := res.ExeResult.(type) {
+			case *curpapi.ProposeResponse_Result:
+				okCnt++
+				switch cr := pr.Result.Result.(type) {
+				case *curpapi.CmdResult_Ok:
+					if isLeaderOK {
+						panic("should not set exe result twice")
+					}
+					isLeaderOK = true
+					err := proto.Unmarshal(cr.Ok, &exeResult)
+					if err != nil {
+						panic(err)
+					}
+				case *curpapi.CmdResult_Error:
+					err := proto.Unmarshal(cr.Error, &exeErr)
+					if err != nil {
+						panic(err)
+					}
+					c.logger.Info("fast round failed", zap.Any("propose ID", cmd.ProposeId))
+					return nil, &CommandError{err: &exeErr}
 				}
-			case *curpapi.CmdResult_Error:
-				err := proto.Unmarshal(cmdResult.Error, &exeErr)
-				if err != nil {
-					logger.Debug("fast round step fail", zap.Error(err), zap.String("Propose ID:", cmd.ProposeId))
-				} else {
-					isReceivedLeaderReq = true
-					isReceivedSuccessRes = 2
-					okCnt++
-				}
+			case *curpapi.ProposeResponse_Error:
+				c.logger.Warn("propose fail", zap.Error(errors.New(pr.Error.String())), zap.Any("propose ID", cmd.ProposeId))
 			default:
-				logger.Warn("unknown command result type")
+				okCnt++
 			}
-		case *curpapi.ProposeResponse_Error:
-			isReceivedLeaderReq = true
-			logger.Debug(fmt.Sprintf("%v", proposeResp.Error))
-		default:
-			okCnt++
-		}
-
-		if isReceivedLeaderReq && okCnt >= superQuorum(len(c.connects)) {
-			logger.Info("Fast round success.", zap.String(" ProposeID:", cmd.ProposeId))
-			if isReceivedSuccessRes == 1 {
-				return &roundRes{
-					res: &ProposeResponse{
-						CommandResp:        &cmdRes,
-						IsFastRoundSuccess: true,
-					},
-					err: err,
-				}
-			}
-			if isReceivedSuccessRes == 2 {
-				return &roundRes{res: &ProposeResponse{IsFastRoundSuccess: false}, err: ProposeError{ExecuteError: &exeErr}}
-			}
+		case err := <-errCh:
+			c.logger.Warn("propose fail", zap.Error(err))
 		}
 	}
 
-	logger.Info("Fast round fail.", zap.String(" ProposeID:", cmd.ProposeId))
-	return &roundRes{
-		res: &ProposeResponse{
-			IsFastRoundSuccess: false,
-		},
-		err: ProposeError{
-			ExecuteError: &exeErr,
-		},
+	if okCnt >= superQuorum && isLeaderOK {
+		c.logger.Info("fast round succeeded", zap.Any("propose ID", cmd.ProposeId))
+		return &fastRoundRes{er: &exeResult, isSucc: true}, nil
 	}
+
+	c.logger.Info("fast round failed", zap.Any("propose ID", cmd.ProposeId))
+	return &fastRoundRes{er: &exeResult, isSucc: false}, nil
 }
 
 // The slow round of Curp protocol
-func (c *curpClient) slowRound(cmd *xlineapi.Command) *roundRes {
-	logger := xlog.GetLogger()
+func (c *protocolClient) slowRound(cmd *xlineapi.Command) (*slowRoundRes, error) {
+	c.logger.Info("slow round started", zap.Any("propose ID", cmd.ProposeId))
 
-	logger.Info("Slow round start.", zap.String("Propose ID:", cmd.ProposeId))
+	var asr xlineapi.SyncResponse
+	var er xlineapi.CommandResponse
+	var exeErr xlineapi.ExecuteError
 
-	var leaderId uint64
-	var syncResp xlineapi.SyncResponse
-	var commandResp xlineapi.CommandResponse
-
-	if c.leader == 0 {
-		leaderId = *c.fetchLeader()
-	} else {
-		leaderId = c.leader
-	}
-
-	conn, err := grpc.Dial(c.connects[leaderId], grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithIdleTimeout(c.timeout.idleTimeout))
-	if err != nil {
-		return &roundRes{res: nil, err: err}
-	}
-	protocolClient := curpapi.NewProtocolClient(conn)
-
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout.waitSyncedTimeout)
-	defer cancel()
-	res, err := protocolClient.WaitSynced(ctx, &curpapi.WaitSyncedRequest{ProposeId: cmd.ProposeId})
-	if err != nil {
-		return &roundRes{res: nil, err: err}
-	}
-	waitSyncedResponse := res
-
-	switch syncResult := waitSyncedResponse.SyncResult.(type) {
-	case *curpapi.WaitSyncedResponse_Success_:
-		err := proto.Unmarshal(syncResult.Success.AfterSyncResult, &syncResp)
+	retryCnt := c.config.RetryCount
+	for i := 0; i < retryCnt; i++ {
+		leaderID, err := c.getLeaderID()
 		if err != nil {
-			return &roundRes{res: nil, err: errors.New("unmarshal syncResp fail")}
+			c.logger.Warn("get leader id error", zap.Error(err))
+			continue
 		}
-		err = proto.Unmarshal(syncResult.Success.ExeResult, &commandResp)
+
+		protocolClient := curpapi.NewProtocolClient(c.connects[*leaderID])
+		ctx, cancel := context.WithTimeout(context.Background(), c.config.ProposeTimeout)
+		defer cancel()
+		req := &curpapi.WaitSyncedRequest{
+			ProposeId: &curpapi.ProposeId{
+				ClientId: cmd.ProposeId.ClientId,
+				SeqNum:   cmd.ProposeId.SeqNum,
+			},
+			ClusterVersion: c.clusterVersion,
+		}
+		res, err := protocolClient.WaitSynced(ctx, req)
 		if err != nil {
-			return &roundRes{res: nil, err: errors.New("unmarshal commandResp fail")}
+			return nil, err
 		}
-		logger.Info("Slow round success.", zap.String("Propose ID:", cmd.ProposeId))
-		return &roundRes{
-			res: &ProposeResponse{
-				SyncResp:    &syncResp,
-				CommandResp: &commandResp,
-			},
-			err: nil,
+
+		if res.AfterSyncResult != nil {
+			switch r := res.AfterSyncResult.Result.(type) {
+			case *curpapi.CmdResult_Ok:
+				err := proto.Unmarshal(r.Ok, &asr)
+				if err != nil {
+					panic(err)
+				}
+			case *curpapi.CmdResult_Error:
+				err := proto.Unmarshal(r.Error, &exeErr)
+				if err != nil {
+					panic(err)
+				}
+				c.logger.Info("slow round failed", zap.Any("propose ID", cmd.ProposeId))
+				return nil, &CommandError{err: &exeErr}
+			}
 		}
-	case *curpapi.WaitSyncedResponse_Error:
-		logger.Info("Slow round success.", zap.String("Propose ID:", cmd.ProposeId))
-		return &roundRes{
-			res: nil,
-			err: CommandSyncError{
-				CommandSyncError: syncResult.Error,
-			},
+		if res.ExeResult != nil {
+			switch r := res.ExeResult.Result.(type) {
+			case *curpapi.CmdResult_Ok:
+				err := proto.Unmarshal(r.Ok, &er)
+				if err != nil {
+					panic(err)
+				}
+			case *curpapi.CmdResult_Error:
+				err := proto.Unmarshal(r.Error, &exeErr)
+				if err != nil {
+					panic(err)
+				}
+				c.logger.Info("slow round failed", zap.Any("propose ID", cmd.ProposeId))
+				return nil, &CommandError{err: &exeErr}
+			}
 		}
-	default:
-		logger.Info("Slow round error.", zap.String("Propose ID:", cmd.ProposeId))
-		return &roundRes{
-			res: nil,
-			err: errors.New("unknown synced response"),
+
+		c.logger.Info("slow round succeeded", zap.Any("propose ID", cmd.ProposeId))
+		return &slowRoundRes{
+			asr: &asr,
+			er:  &er,
+		}, nil
+	}
+
+	return nil, errors.New("slow round timeout")
+}
+
+// Generate a propose id
+func (c *protocolClient) GenProposeID() (*xlineapi.ProposeId, error) {
+	clientID, err := c.getClientID()
+	if err != nil {
+		return nil, err
+	}
+	seqNum := c.newSeqNum()
+	return &xlineapi.ProposeId{
+		ClientId: clientID,
+		SeqNum:   seqNum,
+	}, nil
+}
+
+// Get the client id
+// TODO: grant a client id from server
+func (c *protocolClient) getClientID() (uint64, error) {
+	return rand.Uint64(), nil
+}
+
+// New a seq num and record it
+// TODO: implement request tracker
+func (c *protocolClient) newSeqNum() uint64 {
+	return 0
+}
+
+// Send fetch cluster requests to all servers
+// Note: The fetched cluster may still be outdated if `linearizable` is false
+func (c *protocolClient) fetchCluster(linearizable bool) (*curpapi.FetchClusterResponse, error) {
+	resCh := make(chan *curpapi.FetchClusterResponse)
+	errCh := make(chan error)
+
+	timeout := c.getBackoff()
+	retryCnt := c.config.RetryCount
+	for i := 0; i < retryCnt; i++ {
+		retryTimeout := timeout.nextRetry()
+		for _, conn := range c.connects {
+			conn := conn
+			go func() {
+				protocolClient := curpapi.NewProtocolClient(conn)
+				ctx, cancel := context.WithTimeout(context.Background(), retryTimeout)
+				defer cancel()
+				res, err := protocolClient.FetchCluster(ctx, &curpapi.FetchClusterRequest{Linearizable: linearizable})
+				if err != nil {
+					errCh <- err
+					return
+				}
+				resCh <- res
+			}()
 		}
 	}
+
+	var maxTerm uint64 = 0
+	var res *curpapi.FetchClusterResponse
+	okCnt := 0
+	majorityCnt := len(c.connects)/2 + 1
+
+OuterLoop:
+	for i := 0; i < len(c.connects); i++ {
+		select {
+		case r := <-resCh:
+			if maxTerm < r.Term {
+				maxTerm = r.Term
+				if len(r.Members) != 0 {
+					res = r
+				}
+				okCnt = 1
+			}
+			if maxTerm == r.Term {
+				if len(r.Members) != 0 {
+					res = r
+				}
+				okCnt++
+			}
+
+			if okCnt >= majorityCnt {
+				break OuterLoop
+			}
+		case err := <-errCh:
+			c.logger.Warn("fetch cluster error", zap.Error(err))
+		}
+	}
+
+	if res == nil {
+		return nil, errors.New("fetch cluster failed")
+	}
+
+	c.state.leader = res.ClusterId
+	c.state.term = res.Term
+
+	return res, nil
 }
 
 // Send fetch leader requests to all servers until there is a leader
 // Note: The fetched leader may still be outdated
-func (c *curpClient) fetchLeader() *uint64 {
-	fetchClusterRespCh := make(chan *curpapi.FetchLeaderResponse)
-	var leader *uint64
-	var maxTerm uint64 = 0
-	okCnt := 0
-	majorityCnt := len(c.connects)/2 + 1
-
-	for {
-		for _, protocolClient := range c.inner {
-			client := protocolClient
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), c.timeout.proposeTimeout)
-				defer cancel()
-				res, err := client.FetchLeader(ctx, &curpapi.FetchLeaderRequest{})
-				if err != nil {
-					fetchClusterRespCh <- nil
-				} else {
-					fetchClusterRespCh <- res
-				}
-			}()
-		}
-
-		for {
-			fetchClusterRes := <-fetchClusterRespCh
-
-			if fetchClusterRes == nil {
-				continue
-			}
-
-			if maxTerm < fetchClusterRes.Term {
-				maxTerm = fetchClusterRes.Term
-				leader = fetchClusterRes.LeaderId
-				okCnt = 1
-			} else if maxTerm == fetchClusterRes.Term {
-				leader = fetchClusterRes.LeaderId
-				okCnt += 1
-			}
-			if okCnt >= majorityCnt {
-				break
-			}
-		}
-		c.leader = *leader
-
-		return leader
-	}
-}
-
-type ProposeResponse struct {
-	SyncResp           *xlineapi.SyncResponse
-	CommandResp        *xlineapi.CommandResponse
-	IsFastRoundSuccess bool
-}
-
-type CommandSyncError struct {
-	*curpapi.CommandSyncError
-}
-
-type ProposeError struct {
-	*xlineapi.ExecuteError
-}
-
-func (e CommandSyncError) Error() string {
-	logger, _ := zap.NewDevelopment()
-
-	switch cmdSyncErr := e.CommandSyncError.CommandSyncError.(type) {
-	case *curpapi.CommandSyncError_WaitSync:
-		switch syncErr := cmdSyncErr.WaitSync.WaitSyncError.(type) {
-		case *curpapi.WaitSyncError_Redirect:
-			return fmt.Sprintf("Sync redirect error. SeverId: %v, Term: %v\n", syncErr.Redirect.ServerId, syncErr.Redirect.Term)
-		case *curpapi.WaitSyncError_Other:
-			return fmt.Sprintln("Sync other error.", syncErr.Other)
-		default:
-			return "Sync error"
-		}
-	case *curpapi.CommandSyncError_Execute:
-		var execute xlineapi.ExecuteError
-		err := proto.Unmarshal(cmdSyncErr.Execute, &execute)
+func (c *protocolClient) fetchLeader() (*ServerId, error) {
+	retryCnt := c.config.RetryCount
+	for i := 0; i < retryCnt; i++ {
+		res, err := c.fetchCluster(false)
 		if err != nil {
-			logger.Warn("", zap.Error(err))
+			c.logger.Warn("fetch cluster error", zap.Error(err))
+		} else {
+			return res.LeaderId, nil
 		}
-		return fmt.Sprintf("Command sync execute error. %+v", &execute)
-	case *curpapi.CommandSyncError_AfterSync:
-		var afterSync xlineapi.ExecuteError
-		err := proto.Unmarshal(cmdSyncErr.AfterSync, &afterSync)
-		if err != nil {
-			logger.Warn("", zap.Error(err))
-		}
-		return fmt.Sprintf("Command after sync execute error. %+v", &afterSync)
-	default:
-		return "Command sync error"
 	}
+	return nil, errors.New("fetch leader timeout")
 }
 
-func (e ProposeError) Error() string {
-	return fmt.Sprintf("Execute error %+v\n", e.ExecuteError.Error)
+// Get leader id from the state or fetch it from servers
+func (c *protocolClient) getLeaderID() (*ServerId, error) {
+	retryCnt := c.config.RetryCount
+	for i := 0; i < retryCnt; i++ {
+		if c.state != nil && c.state.leader != 0 {
+			return &c.state.leader, nil
+		}
+		res, err := c.fetchLeader()
+		if err != nil {
+			c.logger.Warn("fetch leader error", zap.Error(err))
+		} else {
+			return res, nil
+		}
+	}
+	return nil, errors.New("fetch leader ID timeout")
+}
+
+// Get the initial backoff config
+func (c *protocolClient) getBackoff() backoff {
+	return backoff{
+		timeout:    c.config.InitialRetryTimeout,
+		maxTimeout: c.config.MaxRetryTimeout,
+		useBackoff: *c.config.UseBackoff,
+	}
 }
 
 // Get the superquorum for curp protocol
@@ -396,4 +493,50 @@ func superQuorum(nodes int) int {
 	quorum := faultTolerance + 1
 	superquorum := faultTolerance + (quorum / 2) + 1
 	return superquorum
+}
+
+// Server ID
+type ServerId = uint64
+
+type state struct {
+	// Current leader
+	leader ServerId
+	// Current term
+	term uint64
+}
+
+type backoff struct {
+	// Current timeout
+	timeout time.Duration
+	// Max timeout
+	maxTimeout time.Duration
+	// Whether to use backoff
+	useBackoff bool
+}
+
+func (b *backoff) nextRetry() time.Duration {
+	current := b.timeout
+	if b.useBackoff {
+		if 2*b.timeout <= b.maxTimeout {
+			current = 2 * b.timeout
+		} else {
+			current = b.maxTimeout
+		}
+	}
+	return current
+}
+
+type fastRoundRes struct {
+	er     *xlineapi.CommandResponse
+	isSucc bool
+}
+
+type slowRoundRes struct {
+	asr *xlineapi.SyncResponse
+	er  *xlineapi.CommandResponse
+}
+
+type proposeRes struct {
+	Er  *xlineapi.CommandResponse
+	Asr *xlineapi.SyncResponse
 }

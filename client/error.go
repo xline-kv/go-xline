@@ -1,9 +1,10 @@
 package client
 
 import (
+	"errors"
 	"fmt"
 
-	"github.com/xline-kv/go-xline/api/xline"
+	xlineapi "github.com/xline-kv/go-xline/api/xline"
 )
 
 type CommandError struct {
@@ -13,3 +14,5 @@ type CommandError struct {
 func (e *CommandError) Error() string {
 	return fmt.Sprintf("command error: %v", e.err)
 }
+
+var ErrWrongClusterVersion = errors.New("wrong cluster version")

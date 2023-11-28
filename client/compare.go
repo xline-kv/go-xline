@@ -14,7 +14,7 @@
 
 package client
 
-import pb "github.com/xline-kv/go-xline/api/xline"
+import "github.com/xline-kv/go-xline/api/xline"
 
 type CompareTarget int
 type CompareResult int
@@ -26,40 +26,40 @@ const (
 	CompareValue
 )
 
-type Cmp pb.Compare
+type Cmp xlineapi.Compare
 
 // nolint: govet
 func Compare(cmp Cmp, result string, v interface{}) Cmp {
-	var r pb.Compare_CompareResult
+	var r xlineapi.Compare_CompareResult
 	switch result {
 	case "=":
-		r = pb.Compare_EQUAL
+		r = xlineapi.Compare_EQUAL
 	case "!=":
-		r = pb.Compare_NOT_EQUAL
+		r = xlineapi.Compare_NOT_EQUAL
 	case ">":
-		r = pb.Compare_GREATER
+		r = xlineapi.Compare_GREATER
 	case "<":
-		r = pb.Compare_LESS
+		r = xlineapi.Compare_LESS
 	default:
 		panic("Unknown result op")
 	}
 	cmp.Result = r
 
 	switch cmp.Target {
-	case pb.Compare_VALUE:
+	case xlineapi.Compare_VALUE:
 		val, ok := v.(string)
 		if !ok {
 			panic("bad compare value")
 		}
-		cmp.TargetUnion = &pb.Compare_Value{Value: []byte(val)}
-	case pb.Compare_VERSION:
-		cmp.TargetUnion = &pb.Compare_Version{Version: mustInt64(v)}
-	case pb.Compare_CREATE:
-		cmp.TargetUnion = &pb.Compare_CreateRevision{CreateRevision: mustInt64(v)}
-	case pb.Compare_MOD:
-		cmp.TargetUnion = &pb.Compare_ModRevision{ModRevision: mustInt64(v)}
-	case pb.Compare_LEASE:
-		cmp.TargetUnion = &pb.Compare_Lease{Lease: mustInt64(v)}
+		cmp.TargetUnion = &xlineapi.Compare_Value{Value: []byte(val)}
+	case xlineapi.Compare_VERSION:
+		cmp.TargetUnion = &xlineapi.Compare_Version{Version: mustInt64(v)}
+	case xlineapi.Compare_CREATE:
+		cmp.TargetUnion = &xlineapi.Compare_CreateRevision{CreateRevision: mustInt64(v)}
+	case xlineapi.Compare_MOD:
+		cmp.TargetUnion = &xlineapi.Compare_ModRevision{ModRevision: mustInt64(v)}
+	case xlineapi.Compare_LEASE:
+		cmp.TargetUnion = &xlineapi.Compare_Lease{Lease: mustInt64(v)}
 	default:
 		panic("Unknown compare type")
 	}
@@ -67,25 +67,25 @@ func Compare(cmp Cmp, result string, v interface{}) Cmp {
 }
 
 func Value(key []byte) Cmp {
-	return Cmp{Key: []byte(key), Target: pb.Compare_VALUE}
+	return Cmp{Key: []byte(key), Target: xlineapi.Compare_VALUE}
 }
 
 func Version(key []byte) Cmp {
-	return Cmp{Key: []byte(key), Target: pb.Compare_VERSION}
+	return Cmp{Key: []byte(key), Target: xlineapi.Compare_VERSION}
 }
 
 func CreateRevision(key []byte) Cmp {
-	return Cmp{Key: []byte(key), Target: pb.Compare_CREATE}
+	return Cmp{Key: []byte(key), Target: xlineapi.Compare_CREATE}
 }
 
 func ModRevision(key []byte) Cmp {
-	return Cmp{Key: []byte(key), Target: pb.Compare_MOD}
+	return Cmp{Key: []byte(key), Target: xlineapi.Compare_MOD}
 }
 
 // LeaseValue compares a key's LeaseID to a value of your choosing. The empty
 // LeaseID is 0, otherwise known as `NoLease`.
 func LeaseValue(key []byte) Cmp {
-	return Cmp{Key: []byte(key), Target: pb.Compare_LEASE}
+	return Cmp{Key: []byte(key), Target: xlineapi.Compare_LEASE}
 }
 
 // nolint: govet

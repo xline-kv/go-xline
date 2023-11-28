@@ -14,7 +14,7 @@
 
 package client
 
-import pb "github.com/xline-kv/go-xline/api/xline"
+import "github.com/xline-kv/go-xline/api/xline"
 
 // Op represents an Operation that kv can execute.
 type Op struct {
@@ -188,21 +188,21 @@ func OpCompact(rev int64, opts ...OpOption) Op {
 	return op
 }
 
-func (op Op) toKeyRange() *pb.KeyRange {
-	var kr *pb.KeyRange
+func (op Op) toKeyRange() *xlineapi.KeyRange {
+	var kr *xlineapi.KeyRange
 	switch op.t {
 	case opRange:
-		kr = &pb.KeyRange{
+		kr = &xlineapi.KeyRange{
 			Key:      op.rangeOp.key,
 			RangeEnd: op.rangeOp.end,
 		}
 	case opPut:
-		kr = &pb.KeyRange{
+		kr = &xlineapi.KeyRange{
 			Key:      op.putOp.key,
 			RangeEnd: op.putOp.key,
 		}
 	case opDeleteRange:
-		kr = &pb.KeyRange{
+		kr = &xlineapi.KeyRange{
 			Key:      op.delOp.key,
 			RangeEnd: op.delOp.end,
 		}
@@ -212,11 +212,11 @@ func (op Op) toKeyRange() *pb.KeyRange {
 	return kr
 }
 
-func (op Op) toRangeReq() *pb.RangeRequest {
+func (op Op) toRangeReq() *xlineapi.RangeRequest {
 	if op.t != opRange {
 		panic("op.t != tRange")
 	}
-	req := &pb.RangeRequest{
+	req := &xlineapi.RangeRequest{
 		Key:               op.rangeOp.key,
 		RangeEnd:          op.rangeOp.end,
 		Limit:             op.rangeOp.limit,
@@ -230,17 +230,17 @@ func (op Op) toRangeReq() *pb.RangeRequest {
 		MaxCreateRevision: op.rangeOp.maxCreateRev,
 	}
 	if op.rangeOp.sort != nil {
-		req.SortOrder = pb.RangeRequest_SortOrder(op.rangeOp.sort.Order)
-		req.SortTarget = pb.RangeRequest_SortTarget(op.rangeOp.sort.Target)
+		req.SortOrder = xlineapi.RangeRequest_SortOrder(op.rangeOp.sort.Order)
+		req.SortTarget = xlineapi.RangeRequest_SortTarget(op.rangeOp.sort.Target)
 	}
 	return req
 }
 
-func (op Op) toPutReq() *pb.PutRequest {
+func (op Op) toPutReq() *xlineapi.PutRequest {
 	if op.t != opPut {
 		panic("op.t != opPut")
 	}
-	req := &pb.PutRequest{
+	req := &xlineapi.PutRequest{
 		Key:         op.putOp.key,
 		Value:       op.putOp.val,
 		Lease:       op.putOp.leaseID,
@@ -251,11 +251,11 @@ func (op Op) toPutReq() *pb.PutRequest {
 	return req
 }
 
-func (op Op) toDeleteReq() *pb.DeleteRangeRequest {
+func (op Op) toDeleteReq() *xlineapi.DeleteRangeRequest {
 	if op.t != opDeleteRange {
 		panic("op.t != opDeleteRange")
 	}
-	req := &pb.DeleteRangeRequest{
+	req := &xlineapi.DeleteRangeRequest{
 		Key:      op.delOp.key,
 		RangeEnd: op.delOp.end,
 		PrevKv:   op.delOp.prevKV,
@@ -263,42 +263,42 @@ func (op Op) toDeleteReq() *pb.DeleteRangeRequest {
 	return req
 }
 
-func (op Op) toTxnRequest() *pb.TxnRequest {
-	thenOps := make([]*pb.RequestOp, len(op.txnOp.thenOps))
+func (op Op) toTxnRequest() *xlineapi.TxnRequest {
+	thenOps := make([]*xlineapi.RequestOp, len(op.txnOp.thenOps))
 	for i, tOp := range op.txnOp.thenOps {
 		thenOps[i] = tOp.toRequestOp()
 	}
-	elseOps := make([]*pb.RequestOp, len(op.txnOp.elseOps))
+	elseOps := make([]*xlineapi.RequestOp, len(op.txnOp.elseOps))
 	for i, eOp := range op.txnOp.elseOps {
 		elseOps[i] = eOp.toRequestOp()
 	}
-	cmps := make([]*pb.Compare, len(op.txnOp.cmps))
+	cmps := make([]*xlineapi.Compare, len(op.txnOp.cmps))
 	for i := range op.txnOp.cmps {
-		cmps[i] = (*pb.Compare)(&op.txnOp.cmps[i])
+		cmps[i] = (*xlineapi.Compare)(&op.txnOp.cmps[i])
 	}
-	return &pb.TxnRequest{Compare: cmps, Success: thenOps, Failure: elseOps}
+	return &xlineapi.TxnRequest{Compare: cmps, Success: thenOps, Failure: elseOps}
 }
 
-func (op Op) toRequestOp() *pb.RequestOp {
+func (op Op) toRequestOp() *xlineapi.RequestOp {
 	switch op.t {
 	case opRange:
-		return &pb.RequestOp{Request: &pb.RequestOp_RequestRange{RequestRange: op.toRangeReq()}}
+		return &xlineapi.RequestOp{Request: &xlineapi.RequestOp_RequestRange{RequestRange: op.toRangeReq()}}
 	case opPut:
-		return &pb.RequestOp{Request: &pb.RequestOp_RequestPut{RequestPut: op.toPutReq()}}
+		return &xlineapi.RequestOp{Request: &xlineapi.RequestOp_RequestPut{RequestPut: op.toPutReq()}}
 	case opDeleteRange:
-		return &pb.RequestOp{Request: &pb.RequestOp_RequestDeleteRange{RequestDeleteRange: op.toDeleteReq()}}
+		return &xlineapi.RequestOp{Request: &xlineapi.RequestOp_RequestDeleteRange{RequestDeleteRange: op.toDeleteReq()}}
 	case opTxn:
-		return &pb.RequestOp{Request: &pb.RequestOp_RequestTxn{RequestTxn: op.toTxnRequest()}}
+		return &xlineapi.RequestOp{Request: &xlineapi.RequestOp_RequestTxn{RequestTxn: op.toTxnRequest()}}
 	default:
 		panic("Unknown Op")
 	}
 }
 
-func (op Op) toCompactReq() *pb.CompactionRequest {
+func (op Op) toCompactReq() *xlineapi.CompactionRequest {
 	if op.t != opCompact {
 		panic("op.t != opCompact")
 	}
-	req := &pb.CompactionRequest{
+	req := &xlineapi.CompactionRequest{
 		Revision: op.compactOp.rev,
 		Physical: op.compactOp.physical,
 	}
@@ -511,16 +511,16 @@ func (op *LeaseOp) applyOpts(opts []LeaseOption) {
 	}
 }
 
-func toTTLReq(id int64, opts ...LeaseOption) *pb.LeaseTimeToLiveRequest {
+func toTTLReq(id int64, opts ...LeaseOption) *xlineapi.LeaseTimeToLiveRequest {
 	req := &LeaseOp{id: id}
 	req.applyOpts(opts)
-	return &pb.LeaseTimeToLiveRequest{ID: int64(id), Keys: req.attachedKeys}
+	return &xlineapi.LeaseTimeToLiveRequest{ID: int64(id), Keys: req.attachedKeys}
 }
 
-func toGrantReq(ttl int64, opts ...LeaseOption) *pb.LeaseGrantRequest {
+func toGrantReq(ttl int64, opts ...LeaseOption) *xlineapi.LeaseGrantRequest {
 	req := &LeaseOp{ttl: ttl}
 	req.applyOpts(opts)
-	return &pb.LeaseGrantRequest{TTL: ttl, ID: req.id}
+	return &xlineapi.LeaseGrantRequest{TTL: ttl, ID: req.id}
 }
 
 // WithID is used to specify the lease ID, otherwise it is automatically generated.

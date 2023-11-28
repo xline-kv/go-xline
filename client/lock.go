@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/google/uuid"
 	"github.com/xline-kv/go-xline/api/xline"
 	"github.com/xline-kv/go-xline/xlog"
 	"go.uber.org/zap"
@@ -29,10 +28,8 @@ type Lock interface {
 
 // Client for Lock operations.
 type lockClient struct {
-	// Name of the LockClient
-	name string
 	// The client running the CURP protocol, communicate with all servers.
-	curpClient *curpClient
+	curpClient Curp
 	// The lease client
 	leaseClient Lease
 	// The watch client
@@ -43,14 +40,12 @@ type lockClient struct {
 
 // Creates a new `LockClient`
 func NewLock(
-	name string,
-	curpClient *curpClient,
+	curpClient Curp,
 	innerLeaseClient Lease,
 	innerWatchClient Watch,
 	token string,
 ) Lock {
 	return &lockClient{
-		name:        name,
 		curpClient:  curpClient,
 		leaseClient: innerLeaseClient,
 		watchClient: innerWatchClient,
@@ -74,21 +69,24 @@ func (c *lockClient) lockInner(
 			TxnRequest: &txn,
 		},
 	}
-	proposeId := c.generateProposeId()
-	cmd := xlineapi.Command{
-		Request:   &requestWithToken,
-		ProposeId: proposeId,
-	}
-	res, err := c.curpClient.propose(&cmd, false)
+	pid, err := c.curpClient.GenProposeID()
 	if err != nil {
 		return nil, err
 	}
-	txnRes := res.CommandResp.GetTxnResponse()
+	cmd := xlineapi.Command{
+		Request:   &requestWithToken,
+		ProposeId: pid,
+	}
+	res, err := c.curpClient.Propose(&cmd, false)
+	if err != nil {
+		return nil, err
+	}
+	txnRes := res.Er.GetTxnResponse()
 
-	if res.SyncResp == nil {
+	if res.Asr == nil {
 		return nil, errors.New("SyncRes always has value when use slow path")
 	}
-	myRev := res.SyncResp.Revision
+	myRev := res.Asr.Revision
 
 	ownerRes := txnRes.Responses[1].GetResponseRange()
 	if ownerRes == nil {
@@ -110,12 +108,15 @@ func (c *lockClient) lockInner(
 				RangeRequest: &rangeReq,
 			},
 		}
-		proposeId := c.generateProposeId()
-		cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: proposeId}
+		pid, err := c.curpClient.GenProposeID()
+		if err != nil {
+			return nil, err
+		}
+		cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: pid}
 
-		res, err := c.curpClient.propose(&cmd, true)
+		res, err := c.curpClient.Propose(&cmd, true)
 		if err == nil {
-			res := res.CommandResp.GetRangeResponse()
+			res := res.Er.GetRangeResponse()
 			if len(res.Kvs) == 0 {
 				return nil, errors.New("rpc error session expired")
 			}
@@ -239,14 +240,17 @@ func (c *lockClient) waitDelete(pfx string, myRev int64) {
 				RangeRequest: &getReq,
 			},
 		}
-		proposeId := c.generateProposeId()
-		cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: proposeId}
+		pid, err := c.curpClient.GenProposeID()
+		if err != nil {
+			return
+		}
+		cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: pid}
 
-		res, err := c.curpClient.propose(&cmd, false)
+		res, err := c.curpClient.Propose(&cmd, false)
 		if err != nil {
 			logger.Error("Range lease id fail.", zap.Error(err))
 		}
-		response := res.CommandResp.GetRangeResponse()
+		response := res.Er.GetRangeResponse()
 		var lastKey []byte
 		if len(response.Kvs) > 0 && response.Kvs[0] != nil {
 			lastKey = response.Kvs[0].Key
@@ -293,23 +297,21 @@ func (c *lockClient) deleteKey(key []byte) (*xlineapi.ResponseHeader, error) {
 			DeleteRangeRequest: &delReq,
 		},
 	}
-	proposeId := c.generateProposeId()
-	cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: proposeId}
-
-	res, err := c.curpClient.propose(&cmd, true)
+	pid, err := c.curpClient.GenProposeID()
 	if err != nil {
 		return nil, err
 	}
-	delRes := res.CommandResp.GetDeleteRangeResponse()
+	cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: pid}
+
+	res, err := c.curpClient.Propose(&cmd, true)
+	if err != nil {
+		return nil, err
+	}
+	delRes := res.Er.GetDeleteRangeResponse()
 	if delRes == nil {
 		return nil, errors.New("get delRes fail")
 	}
 	return delRes.Header, nil
-}
-
-// Generate a new `ProposeId`
-func (c *lockClient) generateProposeId() string {
-	return fmt.Sprintf("%s-%s", c.name, uuid.New().String())
 }
 
 // overflowSub performs subtraction that handles overflow.

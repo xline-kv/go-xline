@@ -21,8 +21,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
-	xlineapi "github.com/xline-kv/go-xline/api/xline"
+	"github.com/xline-kv/go-xline/api/xline"
 	"golang.org/x/crypto/pbkdf2"
 )
 
@@ -114,17 +113,15 @@ const (
 
 // Client for Auth operations.
 type authClient struct {
-	// Name of the AuthClient, which will be used in CURP propose id generation
-	name string
 	// The client running the CURP protocol, communicate with all servers.
-	curpClient curpClient
+	curpClient Curp
 	// The auth token
 	token string
 }
 
 // Creates a new `AuthClient`
-func NewAuth(name string, curpClient curpClient, token string) Auth {
-	return &authClient{name: name, curpClient: curpClient, token: token}
+func NewAuth(curpClient Curp, token string) Auth {
+	return &authClient{curpClient: curpClient, token: token}
 }
 
 // Enables authentication.
@@ -139,9 +136,9 @@ func (c *authClient) AuthEnable() (*AuthEnableResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	res := resp.CommandResp.GetAuthEnableResponse()
-	res.Header.Revision = resp.SyncResp.Revision
-	return (*AuthEnableResponse)(resp.CommandResp.GetAuthEnableResponse()), err
+	res := resp.Er.GetAuthEnableResponse()
+	res.Header.Revision = resp.Asr.Revision
+	return (*AuthEnableResponse)(resp.Er.GetAuthEnableResponse()), err
 }
 
 // Disables authentication.
@@ -156,9 +153,9 @@ func (c *authClient) AuthDisable() (*AuthDisableResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	res := resp.CommandResp.GetAuthDisableResponse()
-	res.Header.Revision = resp.SyncResp.Revision
-	return (*AuthDisableResponse)(resp.CommandResp.GetAuthDisableResponse()), err
+	res := resp.Er.GetAuthDisableResponse()
+	res.Header.Revision = resp.Asr.Revision
+	return (*AuthDisableResponse)(resp.Er.GetAuthDisableResponse()), err
 }
 
 // Gets authentication status.
@@ -173,7 +170,7 @@ func (c *authClient) AuthStatus() (*AuthStatusResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	res := resp.CommandResp.GetAuthStatusResponse()
+	res := resp.Er.GetAuthStatusResponse()
 	return (*AuthStatusResponse)(res), err
 }
 
@@ -189,7 +186,7 @@ func (c *authClient) Authenticate(name, password string) (*AuthenticateResponse,
 	if err != nil {
 		return nil, err
 	}
-	res := resp.CommandResp.GetAuthenticateResponse()
+	res := resp.Er.GetAuthenticateResponse()
 	return (*AuthenticateResponse)(res), err
 }
 
@@ -213,7 +210,7 @@ func (c *authClient) UserAdd(name, password string) (*AuthUserAddResponse, error
 	if err != nil {
 		return nil, err
 	}
-	res := resp.CommandResp.GetAuthUserAddResponse()
+	res := resp.Er.GetAuthUserAddResponse()
 	return (*AuthUserAddResponse)(res), err
 }
 
@@ -248,7 +245,7 @@ func (c *authClient) UserAddWithOptions(name, password string, options *UserAddO
 	if err != nil {
 		return nil, err
 	}
-	res := resp.CommandResp.GetAuthUserAddResponse()
+	res := resp.Er.GetAuthUserAddResponse()
 	return (*AuthUserAddResponse)(res), err
 }
 
@@ -265,8 +262,8 @@ func (c *authClient) UserGet(name string) (*AuthUserGetResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	res := resp.CommandResp.GetAuthUserGetResponse()
-	res.Header.Revision = resp.SyncResp.Revision
+	res := resp.Er.GetAuthUserGetResponse()
+	res.Header.Revision = resp.Asr.Revision
 	return (*AuthUserGetResponse)(res), err
 }
 
@@ -282,7 +279,7 @@ func (c *authClient) UserList() (*AuthUserListResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	res := resp.CommandResp.GetAuthUserListResponse()
+	res := resp.Er.GetAuthUserListResponse()
 	return (*AuthUserListResponse)(res), err
 }
 
@@ -299,8 +296,8 @@ func (c *authClient) UserDelete(name string) (*AuthUserDeleteResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	res := resp.CommandResp.GetAuthUserDeleteResponse()
-	res.Header.Revision = resp.SyncResp.Revision
+	res := resp.Er.GetAuthUserDeleteResponse()
+	res.Header.Revision = resp.Asr.Revision
 	return (*AuthUserDeleteResponse)(res), err
 }
 
@@ -325,8 +322,8 @@ func (c *authClient) UserChangePassword(name, password string) (*AuthUserChangeP
 	if err != nil {
 		return nil, err
 	}
-	res := resp.CommandResp.GetAuthUserChangePasswordResponse()
-	res.Header.Revision = resp.SyncResp.Revision
+	res := resp.Er.GetAuthUserChangePasswordResponse()
+	res.Header.Revision = resp.Asr.Revision
 	return (*AuthUserChangePasswordResponse)(res), err
 }
 
@@ -343,8 +340,8 @@ func (c *authClient) UserGrantRole(user, role string) (*AuthUserGrantRoleRespons
 	if err != nil {
 		return nil, err
 	}
-	res := resp.CommandResp.GetAuthUserGrantRoleResponse()
-	res.Header.Revision = resp.SyncResp.Revision
+	res := resp.Er.GetAuthUserGrantRoleResponse()
+	res.Header.Revision = resp.Asr.Revision
 	return (*AuthUserGrantRoleResponse)(res), err
 }
 
@@ -361,8 +358,8 @@ func (c *authClient) UserRevokeRole(name, role string) (*AuthUserRevokeRoleRespo
 	if err != nil {
 		return nil, err
 	}
-	res := resp.CommandResp.GetAuthUserRevokeRoleResponse()
-	res.Header.Revision = resp.SyncResp.Revision
+	res := resp.Er.GetAuthUserRevokeRoleResponse()
+	res.Header.Revision = resp.Asr.Revision
 	return (*AuthUserRevokeRoleResponse)(res), err
 }
 
@@ -383,8 +380,8 @@ func (c *authClient) RoleAdd(name string) (*AuthRoleAddResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	res := resp.CommandResp.GetAuthRoleAddResponse()
-	res.Header.Revision = resp.SyncResp.Revision
+	res := resp.Er.GetAuthRoleAddResponse()
+	res.Header.Revision = resp.Asr.Revision
 	return (*AuthRoleAddResponse)(res), err
 }
 
@@ -401,7 +398,7 @@ func (c *authClient) RoleGet(role string) (*AuthRoleGetResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	res := resp.CommandResp.GetAuthRoleGetResponse()
+	res := resp.Er.GetAuthRoleGetResponse()
 	return (*AuthRoleGetResponse)(res), err
 }
 
@@ -417,7 +414,7 @@ func (c *authClient) RoleList() (*AuthRoleListResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	res := resp.CommandResp.GetAuthRoleListResponse()
+	res := resp.Er.GetAuthRoleListResponse()
 	return (*AuthRoleListResponse)(res), err
 }
 
@@ -434,8 +431,8 @@ func (c *authClient) RoleDelete(role string) (*AuthRoleDeleteResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	res := resp.CommandResp.GetAuthRoleDeleteResponse()
-	res.Header.Revision = resp.SyncResp.Revision
+	res := resp.Er.GetAuthRoleDeleteResponse()
+	res.Header.Revision = resp.Asr.Revision
 	return (*AuthRoleDeleteResponse)(res), err
 }
 
@@ -462,8 +459,8 @@ func (c *authClient) RoleGrantPermission(user string, key, rangeEnd []byte, perm
 	if err != nil {
 		return nil, err
 	}
-	res := resp.CommandResp.GetAuthRoleGrantPermissionResponse()
-	res.Header.Revision = resp.SyncResp.Revision
+	res := resp.Er.GetAuthRoleGrantPermissionResponse()
+	res.Header.Revision = resp.Asr.Revision
 	return (*AuthRoleGrantPermissionResponse)(res), err
 }
 
@@ -484,25 +481,28 @@ func (c *authClient) RoleRevokePermission(role string, key, rangeEnd []byte) (*A
 	if err != nil {
 		return nil, err
 	}
-	res := resp.CommandResp.GetAuthRoleRevokePermissionResponse()
-	res.Header.Revision = resp.SyncResp.Revision
+	res := resp.Er.GetAuthRoleRevokePermissionResponse()
+	res.Header.Revision = resp.Asr.Revision
 	return (*AuthRoleRevokePermissionResponse)(res), err
 }
 
 // Send request using fast path
-func (c *authClient) handleReq(req *xlineapi.RequestWithToken, useFastPath bool) (*ProposeResponse, error) {
-	proposeId := c.generateProposeId()
-	cmd := xlineapi.Command{Request: req, ProposeId: proposeId}
+func (c *authClient) handleReq(req *xlineapi.RequestWithToken, useFastPath bool) (*proposeRes, error) {
+	pid, err := c.curpClient.GenProposeID()
+	if err != nil {
+		return nil, err
+	}
+	cmd := xlineapi.Command{Request: req, ProposeId: pid}
 
 	if useFastPath {
-		res, err := c.curpClient.propose(&cmd, true)
+		res, err := c.curpClient.Propose(&cmd, true)
 		return res, err
 	} else {
-		res, err := c.curpClient.propose(&cmd, false)
+		res, err := c.curpClient.Propose(&cmd, false)
 		if err != nil {
 			return res, err
 		} else {
-			if res != nil && res.SyncResp == nil {
+			if res != nil && res.Asr == nil {
 				panic("syncResp is always Some when useFastPath is false")
 			}
 			return res, err
@@ -532,9 +532,4 @@ func (c *authClient) hashPassword(password []byte) string {
 	hash := fmt.Sprintf("$pbkdf2-sha256$i=%d,l=%d$%s$%s", pbkdf2Iter, pbkdf2KeyLen, _salt, _hashed)
 
 	return hash
-}
-
-// Generate a new `ProposeId`
-func (c *authClient) generateProposeId() string {
-	return fmt.Sprintf("%s-%s", c.name, uuid.New().String())
 }

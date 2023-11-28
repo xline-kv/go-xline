@@ -14,12 +14,7 @@
 
 package client
 
-import (
-	"fmt"
-
-	"github.com/google/uuid"
-	"github.com/xline-kv/go-xline/api/xline"
-)
+import "github.com/xline-kv/go-xline/api/xline"
 
 type KV interface {
 	// Put puts a key-value pair into xline.
@@ -68,17 +63,15 @@ type (
 
 // Client for KV operations.
 type kvClient struct {
-	// Name of the kv client, which will be used in CURP propose id generation
-	name string
 	// The client running the CURP protocol, communicate with all servers.
-	curpClient curpClient
+	curpClient Curp
 	// The auth token
 	token string
 }
 
 // New `KvClient`
-func NewKV(name string, curpClient curpClient, token string) KV {
-	return &kvClient{name: name, curpClient: curpClient, token: token}
+func NewKV(curpClient Curp, token string) KV {
+	return &kvClient{curpClient: curpClient, token: token}
 }
 
 // Put a key-value into the store
@@ -91,13 +84,16 @@ func (c *kvClient) Put(key, val []byte, opts ...OpOption) (*PutResponse, error) 
 			PutRequest: op.toPutReq(),
 		},
 	}
-	pid := c.generateProposeId()
-	cmd := xlineapi.Command{Keys: krs, Request: &req, ProposeId: pid}
-	res, err := c.curpClient.propose(&cmd, true)
+	pid, err := c.curpClient.GenProposeID()
 	if err != nil {
 		return nil, err
 	}
-	return (*PutResponse)(res.CommandResp.GetPutResponse()), err
+	cmd := xlineapi.Command{Keys: krs, Request: &req, ProposeId: pid}
+	res, err := c.curpClient.Propose(&cmd, true)
+	if err != nil {
+		return nil, err
+	}
+	return (*PutResponse)(res.Er.GetPutResponse()), err
 }
 
 // Range a range of keys from the store
@@ -110,13 +106,16 @@ func (c *kvClient) Range(key []byte, opt ...OpOption) (*RangeResponse, error) {
 			RangeRequest: op.toRangeReq(),
 		},
 	}
-	pid := c.generateProposeId()
-	cmd := xlineapi.Command{Keys: krs, Request: &req, ProposeId: pid}
-	res, err := c.curpClient.propose(&cmd, true)
+	pid, err := c.curpClient.GenProposeID()
 	if err != nil {
 		return nil, err
 	}
-	return (*RangeResponse)(res.CommandResp.GetRangeResponse()), err
+	cmd := xlineapi.Command{Keys: krs, Request: &req, ProposeId: pid}
+	res, err := c.curpClient.Propose(&cmd, true)
+	if err != nil {
+		return nil, err
+	}
+	return (*RangeResponse)(res.Er.GetRangeResponse()), err
 }
 
 // Delete a range of keys from the store
@@ -129,19 +128,21 @@ func (c *kvClient) Delete(key string, opts ...OpOption) (*DeleteResponse, error)
 			DeleteRangeRequest: op.toDeleteReq(),
 		},
 	}
-	pid := c.generateProposeId()
-	cmd := xlineapi.Command{Keys: krs, Request: &req, ProposeId: pid}
-	res, err := c.curpClient.propose(&cmd, false)
+	pid, err := c.curpClient.GenProposeID()
 	if err != nil {
 		return nil, err
 	}
-	return (*DeleteResponse)(res.CommandResp.GetDeleteRangeResponse()), err
+	cmd := xlineapi.Command{Keys: krs, Request: &req, ProposeId: pid}
+	res, err := c.curpClient.Propose(&cmd, false)
+	if err != nil {
+		return nil, err
+	}
+	return (*DeleteResponse)(res.Er.GetDeleteRangeResponse()), err
 }
 
 // Creates a transaction, which can provide serializable writes
 func (c *kvClient) Txn() Txn {
 	return &txn{
-		name:       c.name,
 		curpClient: c.curpClient,
 		token:      c.token,
 	}
@@ -157,18 +158,14 @@ func (c *kvClient) Compact(rev int64, opts ...OpOption) (*CompactResponse, error
 			CompactionRequest: r,
 		},
 	}
-	id := c.generateProposeId()
-	cmd := xlineapi.Command{Request: &req, ProposeId: id}
-	res, err := c.curpClient.propose(&cmd, useFastPath)
+	pid, err := c.curpClient.GenProposeID()
 	if err != nil {
 		return nil, err
 	}
-	return (*CompactResponse)(res.CommandResp.GetCompactionResponse()), err
-}
-
-// TODO: update the propose id
-// FYI: https://github.com/xline-kv/Xline/blob/84c685ac4b311ec035076b295e192c65644f85b9/curp-external-api/src/cmd.rs#L84
-// Generate a new `ProposeId`
-func (c *kvClient) generateProposeId() string {
-	return fmt.Sprintf("%s-%s", c.name, uuid.New().String())
+	cmd := xlineapi.Command{Request: &req, ProposeId: pid}
+	res, err := c.curpClient.Propose(&cmd, useFastPath)
+	if err != nil {
+		return nil, err
+	}
+	return (*CompactResponse)(res.Er.GetCompactionResponse()), err
 }

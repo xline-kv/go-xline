@@ -24,7 +24,7 @@ import (
 )
 
 func TestPut(t *testing.T) {
-	xlog.SetLevel(zapcore.WarnLevel)
+	xlog.SetLevel(zapcore.ErrorLevel)
 
 	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
 
@@ -47,7 +47,7 @@ func TestPut(t *testing.T) {
 }
 
 func TestGet(t *testing.T) {
-	xlog.SetLevel(zapcore.WarnLevel)
+	xlog.SetLevel(zapcore.ErrorLevel)
 
 	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
 
@@ -90,7 +90,7 @@ func TestGet(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	xlog.SetLevel(zapcore.WarnLevel)
+	xlog.SetLevel(zapcore.ErrorLevel)
 
 	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
 
@@ -141,7 +141,7 @@ func TestDelete(t *testing.T) {
 }
 
 func TestTxn(t *testing.T) {
-	xlog.SetLevel(zapcore.WarnLevel)
+	xlog.SetLevel(zapcore.ErrorLevel)
 
 	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
 
@@ -186,7 +186,7 @@ func TestTxn(t *testing.T) {
 }
 
 func TestCompact(t *testing.T) {
-	xlog.SetLevel(zapcore.WarnLevel)
+	xlog.SetLevel(zapcore.ErrorLevel)
 
 	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
 

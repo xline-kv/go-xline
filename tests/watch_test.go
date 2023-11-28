@@ -19,14 +19,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap/zapcore"
-
 	"github.com/xline-kv/go-xline/client"
 	"github.com/xline-kv/go-xline/xlog"
+	"go.uber.org/zap/zapcore"
 )
 
 func TestWatch(t *testing.T) {
-	xlog.SetLevel(zapcore.WarnLevel)
+	xlog.SetLevel(zapcore.ErrorLevel)
 
 	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
 

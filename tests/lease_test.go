@@ -19,14 +19,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	pb "github.com/xline-kv/go-xline/api/xline"
+	"github.com/xline-kv/go-xline/api/xline"
 	"github.com/xline-kv/go-xline/client"
 	"github.com/xline-kv/go-xline/xlog"
 	"go.uber.org/zap/zapcore"
 )
 
 func TestLeaseUser(t *testing.T) {
-	xlog.SetLevel(zapcore.WarnLevel)
+	xlog.SetLevel(zapcore.ErrorLevel)
 
 	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
 
@@ -119,7 +119,7 @@ func TestLeaseUser(t *testing.T) {
 	})
 }
 
-func leaseExists(leases []*pb.LeaseStatus, lease *int64) bool {
+func leaseExists(leases []*xlineapi.LeaseStatus, lease *int64) bool {
 	for _, l := range leases {
 		if l.ID == *lease {
 			return true

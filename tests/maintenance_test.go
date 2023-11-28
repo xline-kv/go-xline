@@ -10,7 +10,7 @@ import (
 )
 
 func TestMaintenance(t *testing.T) {
-	xlog.SetLevel(zapcore.WarnLevel)
+	xlog.SetLevel(zapcore.ErrorLevel)
 
 	curpMembers := []string{"172.20.0.3:2379", "172.20.0.4:2379", "172.20.0.5:2379"}
 

@@ -21,12 +21,13 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/xline-kv/go-xline/api/curp"
-	"github.com/xline-kv/go-xline/api/xline"
+	curpapi "github.com/xline-kv/go-xline/api/curp"
+	xlineapi "github.com/xline-kv/go-xline/api/xline"
 	"github.com/xline-kv/go-xline/xlog"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -129,10 +130,28 @@ func fastFetchCluster(addrs []string, proposeTimeout time.Duration) (*curpapi.Fe
 
 // Propose the request to servers, if use_fast_path is false, it will wait for the synced index
 func (c *protocolClient) Propose(cmd *xlineapi.Command, useFastPath bool) (*proposeRes, error) {
-	if useFastPath {
-		return c.fastPath(cmd)
+	var res *proposeRes
+	var err error
+	for {
+		if useFastPath {
+			res, err = c.fastPath(cmd)
+		} else {
+			res, err = c.slowPath(cmd)
+		}
+
+		if errors.Is(err, ErrWrongClusterVersion) {
+			cluster, err := c.fetchCluster(false)
+			if err != nil {
+				return nil, err
+			}
+			err = c.setCluster(cluster)
+			if err != nil {
+				return nil, err
+			}
+			continue
+		}
+		return res, err
 	}
-	return c.slowPath(cmd)
 }
 
 // Fast path of propose
@@ -237,6 +256,7 @@ func (c *protocolClient) fastRound(cmd *xlineapi.Command) (*fastRoundRes, error)
 	for i := 0; i < len(c.connects); i++ {
 		select {
 		case res := <-resCh:
+			c.state.checkAndUpdate(*res.LeaderId, res.Term)
 			switch pr := res.ExeResult.(type) {
 			case *curpapi.ProposeResponse_Result:
 				okCnt++
@@ -265,6 +285,13 @@ func (c *protocolClient) fastRound(cmd *xlineapi.Command) (*fastRoundRes, error)
 			}
 		case err := <-errCh:
 			c.logger.Warn("propose fail", zap.Error(err))
+			if fromErr, ok := status.FromError(err); ok {
+				msg := fromErr.Message()
+				if msg == "wrong cluster version" {
+					return nil, ErrWrongClusterVersion
+				}
+			}
+			return nil, err
 		}
 	}
 
@@ -379,11 +406,17 @@ func (c *protocolClient) newSeqNum() uint64 {
 // Send fetch cluster requests to all servers
 // Note: The fetched cluster may still be outdated if `linearizable` is false
 func (c *protocolClient) fetchCluster(linearizable bool) (*curpapi.FetchClusterResponse, error) {
-	resCh := make(chan *curpapi.FetchClusterResponse)
-	errCh := make(chan error)
+	var resCh chan *curpapi.FetchClusterResponse
+	var errCh chan error
 
 	timeout := c.getBackoff()
 	retryCnt := c.config.RetryCount
+
+	var maxTerm uint64 = 0
+	var res *curpapi.FetchClusterResponse
+	okCnt := 0
+	majorityCnt := len(c.connects)/2 + 1
+
 	for i := 0; i < retryCnt; i++ {
 		retryTimeout := timeout.nextRetry()
 		for _, conn := range c.connects {
@@ -392,55 +425,74 @@ func (c *protocolClient) fetchCluster(linearizable bool) (*curpapi.FetchClusterR
 				protocolClient := curpapi.NewProtocolClient(conn)
 				ctx, cancel := context.WithTimeout(context.Background(), retryTimeout)
 				defer cancel()
-				res, err := protocolClient.FetchCluster(ctx, &curpapi.FetchClusterRequest{Linearizable: linearizable})
+				r, err := protocolClient.FetchCluster(ctx, &curpapi.FetchClusterRequest{Linearizable: linearizable})
 				if err != nil {
 					errCh <- err
-					return
 				}
-				resCh <- res
+				resCh <- r
 			}()
 		}
-	}
 
-	var maxTerm uint64 = 0
-	var res *curpapi.FetchClusterResponse
-	okCnt := 0
-	majorityCnt := len(c.connects)/2 + 1
-
-OuterLoop:
-	for i := 0; i < len(c.connects); i++ {
-		select {
-		case r := <-resCh:
-			if maxTerm < r.Term {
-				maxTerm = r.Term
-				if len(r.Members) != 0 {
-					res = r
+	Out:
+		for i := 0; i < len(c.connects); i++ {
+			select {
+			case r := <-resCh:
+				if maxTerm < r.Term {
+					maxTerm = r.Term
+					if len(r.Members) != 0 {
+						res = r
+					}
+					okCnt = 1
 				}
-				okCnt = 1
-			}
-			if maxTerm == r.Term {
-				if len(r.Members) != 0 {
-					res = r
+				if maxTerm == r.Term {
+					if len(r.Members) != 0 {
+						res = r
+					}
+					okCnt++
 				}
-				okCnt++
+				if okCnt >= majorityCnt {
+					break Out
+				}
+			case err := <-errCh:
+				c.logger.Warn("fetch cluster error", zap.Error(err))
 			}
+		}
 
-			if okCnt >= majorityCnt {
-				break OuterLoop
-			}
-		case err := <-errCh:
-			c.logger.Warn("fetch cluster error", zap.Error(err))
+		if res != nil {
+			c.logger.Info("fetch cluster succeeded")
+			c.state.leader = *res.LeaderId
+			c.state.term = res.Term
+			c.state.checkAndUpdate(*res.LeaderId, res.Term)
+			return res, nil
 		}
 	}
+	return nil, errors.New("fetch cluster timeout")
+}
 
-	if res == nil {
-		return nil, errors.New("fetch cluster failed")
+func (c *protocolClient) setCluster(cluster *curpapi.FetchClusterResponse) error {
+	c.logger.Info("update client by remote cluster", zap.Any("cluster", cluster))
+
+	var conns = make(map[ServerId]*grpc.ClientConn)
+
+	c.state.checkAndUpdate(*cluster.LeaderId, cluster.Term)
+
+	for _, conn := range c.connects {
+		conn.Close()
 	}
 
-	c.state.leader = res.ClusterId
-	c.state.term = res.Term
+	memberAddrs := cluster.Members
+	for _, node := range memberAddrs {
+		conn, err := grpc.Dial(node.Addrs[0], grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			return err
+		}
+		conns[node.Id] = conn
+	}
+	c.connects = conns
 
-	return res, nil
+	c.clusterVersion = cluster.ClusterVersion
+
+	return nil
 }
 
 // Send fetch leader requests to all servers until there is a leader
@@ -503,6 +555,44 @@ type state struct {
 	leader ServerId
 	// Current term
 	term uint64
+}
+
+func (s *state) checkAndUpdate(leaderID uint64, term uint64) {
+	if s.term < term {
+		// reset term only when the resp has leader id to prevent:
+		// If a server loses contact with its leader, it will update its term for election. Since other servers are all right, the election will not succeed.
+		// But if the client learns about the new term and updates its term to it, it will never get the true leader.
+		if leaderID != 0 {
+			newLeaderID := leaderID
+			s.updateToTerm(term)
+			s.setLeader(newLeaderID)
+		}
+	}
+	if s.term == term {
+		if leaderID == 0 {
+			newLeaderID := leaderID
+			if s.leader == 0 {
+				s.setLeader(newLeaderID)
+			}
+			if s.leader == newLeaderID {
+				panic("there should never be two leader in one term")
+			}
+		}
+	}
+}
+
+// Set the leader and notify all the waiters
+func (s *state) setLeader(id ServerId) {
+	s.leader = id
+}
+
+// Update to the newest term and reset local cache
+func (s *state) updateToTerm(term uint64) {
+	if s.term < term {
+		panic(fmt.Sprintf("the client's term %d should not be greater than the given term %d when update the term", s.term, term))
+	}
+	s.term = term
+	s.leader = 0
 }
 
 type backoff struct {

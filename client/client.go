@@ -24,6 +24,8 @@ type client struct {
 	Lock
 	// Maintenance client
 	Maintenance
+	// Cluster client
+	Cluster
 }
 
 func Connect(allMembers []string, options ...ClientOptions) (*client, error) {
@@ -71,6 +73,7 @@ func Connect(allMembers []string, options ...ClientOptions) (*client, error) {
 	watch := NewWatch(conn)
 	lock := NewLock(curpClient, lease, watch, token)
 	maintenance := NewMaintenance(conn)
+	cluster := NewCluster(conn)
 
 	return &client{
 		KV:          kv,
@@ -79,6 +82,7 @@ func Connect(allMembers []string, options ...ClientOptions) (*client, error) {
 		Watch:       watch,
 		Lock:        lock,
 		Maintenance: maintenance,
+		Cluster:     cluster,
 	}, nil
 }
 

@@ -16,10 +16,8 @@ package client
 
 import (
 	"context"
-	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/xline-kv/go-xline/api/xline"
 	"github.com/xline-kv/go-xline/xlog"
 	"go.uber.org/zap"
@@ -59,10 +57,8 @@ type Lease interface {
 
 // Client for Lease operations
 type leaseClient struct {
-	// Name of the LeaseClient, which will be used in CURP propose id generation
-	name string
 	// The client running the CURP protocol, communicate with all servers.
-	curpClient curpClient
+	curpClient Curp
 	// The lease RPC client, only communicate with one server at a time
 	leaseClient xlineapi.LeaseClient
 	// Auth token
@@ -77,14 +73,12 @@ const keepAliveInterval = 1 * time.Millisecond
 
 // Creates a new `LeaseClient`
 func NewLease(
-	name string,
-	curpClient curpClient,
+	curpClient Curp,
 	conn *grpc.ClientConn,
 	token string,
 	idGen leaseIdGenerator,
 ) Lease {
 	return &leaseClient{
-		name:        name,
 		curpClient:  curpClient,
 		leaseClient: xlineapi.NewLeaseClient(conn),
 		token:       token,
@@ -107,14 +101,17 @@ func (c *leaseClient) Grant(ttl int64, opts ...LeaseOption) (*LeaseGrantResponse
 			LeaseGrantRequest: request,
 		},
 	}
-	proposeId := c.generateProposeId()
-	cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: proposeId}
-
-	res, err := c.curpClient.propose(&cmd, true)
+	pid, err := c.curpClient.GenProposeID()
 	if err != nil {
 		return nil, err
 	}
-	return (*LeaseGrantResponse)(res.CommandResp.GetLeaseGrantResponse()), err
+	cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: pid}
+
+	res, err := c.curpClient.Propose(&cmd, true)
+	if err != nil {
+		return nil, err
+	}
+	return (*LeaseGrantResponse)(res.Er.GetLeaseGrantResponse()), err
 }
 
 // Revokes a lease. All keys attached to the lease will expire and be deleted.
@@ -125,14 +122,17 @@ func (c *leaseClient) Revoke(id int64) (*LeaseRevokeResponse, error) {
 			LeaseRevokeRequest: &xlineapi.LeaseRevokeRequest{ID: id},
 		},
 	}
-	proposeId := c.generateProposeId()
-	cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: proposeId}
-
-	res, err := c.curpClient.propose(&cmd, true)
+	pid, err := c.curpClient.GenProposeID()
 	if err != nil {
 		return nil, err
 	}
-	return (*LeaseRevokeResponse)(res.CommandResp.GetLeaseRevokeResponse()), err
+	cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: pid}
+
+	res, err := c.curpClient.Propose(&cmd, true)
+	if err != nil {
+		return nil, err
+	}
+	return (*LeaseRevokeResponse)(res.Er.GetLeaseRevokeResponse()), err
 }
 
 // Keeps the lease alive by streaming keep alive requests from the client
@@ -213,17 +213,15 @@ func (c *leaseClient) Leases() (*LeaseLeasesResponse, error) {
 			LeaseLeasesRequest: &xlineapi.LeaseLeasesRequest{},
 		},
 	}
-	proposeId := c.generateProposeId()
-	cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: proposeId}
-
-	res, err := c.curpClient.propose(&cmd, true)
+	pid, err := c.curpClient.GenProposeID()
 	if err != nil {
 		return nil, err
 	}
-	return (*LeaseLeasesResponse)(res.CommandResp.GetLeaseLeasesResponse()), err
-}
+	cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: pid}
 
-// Generate a new `ProposeId`
-func (c *leaseClient) generateProposeId() string {
-	return fmt.Sprintf("%s-%s", c.name, uuid.New().String())
+	res, err := c.curpClient.Propose(&cmd, true)
+	if err != nil {
+		return nil, err
+	}
+	return (*LeaseLeasesResponse)(res.Er.GetLeaseLeasesResponse()), err
 }

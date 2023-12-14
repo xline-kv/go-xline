@@ -108,6 +108,7 @@ func fastFetchCluster(addrs []string, proposeTimeout time.Duration) (*curpapi.Fe
 			ctx, cancel := context.WithTimeout(context.Background(), proposeTimeout)
 			defer cancel()
 			res, err := protocolClient.FetchCluster(ctx, &curpapi.FetchClusterRequest{})
+			fmt.Println(res)
 			if err != nil {
 				errCh <- err
 				return
@@ -141,10 +142,13 @@ func (c *protocolClient) Propose(cmd *xlineapi.Command, useFastPath bool) (*prop
 
 		if errors.Is(err, ErrWrongClusterVersion) {
 			cluster, err := c.fetchCluster(false)
+			fmt.Println("here")
 			if err != nil {
 				return nil, err
 			}
+			fmt.Println("here1")
 			err = c.setCluster(cluster)
+			fmt.Println("err", err)
 			if err != nil {
 				return nil, err
 			}
@@ -169,6 +173,7 @@ func (c *protocolClient) fastPath(cmd *xlineapi.Command) (*proposeRes, error) {
 		fastCh <- res
 	}()
 	go func() {
+		time.Sleep(1 * time.Second)
 		res, err := c.slowRound(cmd)
 		if err != nil {
 			errCh <- err
@@ -245,6 +250,8 @@ func (c *protocolClient) fastRound(cmd *xlineapi.Command) (*fastRoundRes, error)
 			ctx, cancel := context.WithTimeout(context.Background(), c.config.ProposeTimeout)
 			defer cancel()
 			res, err := protocolClient.Propose(ctx, req)
+			fmt.Println("fast", res)
+			fmt.Println("fast", err)
 			if err != nil {
 				errCh <- err
 				return
@@ -331,6 +338,8 @@ func (c *protocolClient) slowRound(cmd *xlineapi.Command) (*slowRoundRes, error)
 			ClusterVersion: c.clusterVersion,
 		}
 		res, err := protocolClient.WaitSynced(ctx, req)
+		fmt.Println("slow", res)
+		fmt.Println("slow", err)
 		if err != nil {
 			return nil, err
 		}
@@ -406,8 +415,8 @@ func (c *protocolClient) newSeqNum() uint64 {
 // Send fetch cluster requests to all servers
 // Note: The fetched cluster may still be outdated if `linearizable` is false
 func (c *protocolClient) fetchCluster(linearizable bool) (*curpapi.FetchClusterResponse, error) {
-	var resCh chan *curpapi.FetchClusterResponse
-	var errCh chan error
+	resCh := make(chan *curpapi.FetchClusterResponse)
+	errCh := make(chan error)
 
 	timeout := c.getBackoff()
 	retryCnt := c.config.RetryCount
@@ -426,17 +435,23 @@ func (c *protocolClient) fetchCluster(linearizable bool) (*curpapi.FetchClusterR
 				ctx, cancel := context.WithTimeout(context.Background(), retryTimeout)
 				defer cancel()
 				r, err := protocolClient.FetchCluster(ctx, &curpapi.FetchClusterRequest{Linearizable: linearizable})
+				fmt.Println("here", r)
+				fmt.Println("here", err)
 				if err != nil {
 					errCh <- err
 				}
+				fmt.Println("channel",resCh)
 				resCh <- r
+				fmt.Println("-----------------")
 			}()
 		}
 
-	Out:
+		Out:
 		for i := 0; i < len(c.connects); i++ {
+			fmt.Println("111")
 			select {
 			case r := <-resCh:
+				fmt.Println("11")
 				if maxTerm < r.Term {
 					maxTerm = r.Term
 					if len(r.Members) != 0 {
@@ -458,6 +473,7 @@ func (c *protocolClient) fetchCluster(linearizable bool) (*curpapi.FetchClusterR
 			}
 		}
 
+
 		if res != nil {
 			c.logger.Info("fetch cluster succeeded")
 			c.state.leader = *res.LeaderId
@@ -474,7 +490,9 @@ func (c *protocolClient) setCluster(cluster *curpapi.FetchClusterResponse) error
 
 	var conns = make(map[ServerId]*grpc.ClientConn)
 
+	fmt.Println("here2")
 	c.state.checkAndUpdate(*cluster.LeaderId, cluster.Term)
+	fmt.Println("here3")
 
 	for _, conn := range c.connects {
 		conn.Close()
@@ -492,6 +510,7 @@ func (c *protocolClient) setCluster(cluster *curpapi.FetchClusterResponse) error
 
 	c.clusterVersion = cluster.ClusterVersion
 
+	fmt.Println("hear4")
 	return nil
 }
 

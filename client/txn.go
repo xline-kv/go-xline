@@ -130,11 +130,7 @@ func (txn *txn) Commit() (*TxnResponse, error) {
 			TxnRequest: req,
 		},
 	}
-	pid, err := txn.curpClient.GenProposeID()
-	if err != nil {
-		return nil, err
-	}
-	cmd := xlineapi.Command{Keys: krs, Request: &requestWithToken, ProposeId: pid}
+	cmd := xlineapi.Command{Keys: krs, Request: &requestWithToken}
 	res, err := txn.curpClient.Propose(&cmd, false)
 	if err != nil {
 		return nil, err

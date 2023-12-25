@@ -84,11 +84,7 @@ func (c *kvClient) Put(key, val []byte, opts ...OpOption) (*PutResponse, error) 
 			PutRequest: op.toPutReq(),
 		},
 	}
-	pid, err := c.curpClient.GenProposeID()
-	if err != nil {
-		return nil, err
-	}
-	cmd := xlineapi.Command{Keys: krs, Request: &req, ProposeId: pid}
+	cmd := xlineapi.Command{Keys: krs, Request: &req}
 	res, err := c.curpClient.Propose(&cmd, true)
 	if err != nil {
 		return nil, err
@@ -106,11 +102,7 @@ func (c *kvClient) Range(key []byte, opt ...OpOption) (*RangeResponse, error) {
 			RangeRequest: op.toRangeReq(),
 		},
 	}
-	pid, err := c.curpClient.GenProposeID()
-	if err != nil {
-		return nil, err
-	}
-	cmd := xlineapi.Command{Keys: krs, Request: &req, ProposeId: pid}
+	cmd := xlineapi.Command{Keys: krs, Request: &req}
 	res, err := c.curpClient.Propose(&cmd, true)
 	if err != nil {
 		return nil, err
@@ -128,11 +120,7 @@ func (c *kvClient) Delete(key string, opts ...OpOption) (*DeleteResponse, error)
 			DeleteRangeRequest: op.toDeleteReq(),
 		},
 	}
-	pid, err := c.curpClient.GenProposeID()
-	if err != nil {
-		return nil, err
-	}
-	cmd := xlineapi.Command{Keys: krs, Request: &req, ProposeId: pid}
+	cmd := xlineapi.Command{Keys: krs, Request: &req}
 	res, err := c.curpClient.Propose(&cmd, false)
 	if err != nil {
 		return nil, err
@@ -158,11 +146,7 @@ func (c *kvClient) Compact(rev int64, opts ...OpOption) (*CompactResponse, error
 			CompactionRequest: r,
 		},
 	}
-	pid, err := c.curpClient.GenProposeID()
-	if err != nil {
-		return nil, err
-	}
-	cmd := xlineapi.Command{Request: &req, ProposeId: pid}
+	cmd := xlineapi.Command{Request: &req}
 	res, err := c.curpClient.Propose(&cmd, useFastPath)
 	if err != nil {
 		return nil, err

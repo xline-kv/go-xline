@@ -257,6 +257,7 @@ func (c *protocolClient) fastRound(pid *curpapi.ProposeId, cmd *xlineapi.Command
 		}()
 	}
 
+	
 	for i := 0; i < len(c.connects); i++ {
 		select {
 		case res := <-resCh:

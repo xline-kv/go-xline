@@ -69,13 +69,8 @@ func (c *lockClient) lockInner(
 			TxnRequest: &txn,
 		},
 	}
-	pid, err := c.curpClient.GenProposeID()
-	if err != nil {
-		return nil, err
-	}
 	cmd := xlineapi.Command{
 		Request:   &requestWithToken,
-		ProposeId: pid,
 	}
 	res, err := c.curpClient.Propose(&cmd, false)
 	if err != nil {
@@ -108,11 +103,7 @@ func (c *lockClient) lockInner(
 				RangeRequest: &rangeReq,
 			},
 		}
-		pid, err := c.curpClient.GenProposeID()
-		if err != nil {
-			return nil, err
-		}
-		cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: pid}
+		cmd := xlineapi.Command{Request: &requestWithToken}
 
 		res, err := c.curpClient.Propose(&cmd, true)
 		if err == nil {
@@ -240,11 +231,7 @@ func (c *lockClient) waitDelete(pfx string, myRev int64) {
 				RangeRequest: &getReq,
 			},
 		}
-		pid, err := c.curpClient.GenProposeID()
-		if err != nil {
-			return
-		}
-		cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: pid}
+		cmd := xlineapi.Command{Request: &requestWithToken}
 
 		res, err := c.curpClient.Propose(&cmd, false)
 		if err != nil {
@@ -297,11 +284,7 @@ func (c *lockClient) deleteKey(key []byte) (*xlineapi.ResponseHeader, error) {
 			DeleteRangeRequest: &delReq,
 		},
 	}
-	pid, err := c.curpClient.GenProposeID()
-	if err != nil {
-		return nil, err
-	}
-	cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: pid}
+	cmd := xlineapi.Command{Request: &requestWithToken}
 
 	res, err := c.curpClient.Propose(&cmd, true)
 	if err != nil {

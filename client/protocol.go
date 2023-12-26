@@ -36,7 +36,7 @@ type Curp interface {
 	Propose(cmd *xlineapi.Command, useFastPath bool) (*proposeRes, error)
 
 	// Generate a propose id
-	GenProposeID() (*xlineapi.ProposeId, error)
+	GenProposeID() (*curpapi.ProposeId, error)
 }
 
 // Protocol client
@@ -132,11 +132,15 @@ func fastFetchCluster(addrs []string, proposeTimeout time.Duration) (*curpapi.Fe
 func (c *protocolClient) Propose(cmd *xlineapi.Command, useFastPath bool) (*proposeRes, error) {
 	var res *proposeRes
 	var err error
+	pid, err := c.GenProposeID()
+	if err != nil {
+		return nil, err
+	}
 	for {
 		if useFastPath {
-			res, err = c.fastPath(cmd)
+			res, err = c.fastPath(pid, cmd)
 		} else {
-			res, err = c.slowPath(cmd)
+			res, err = c.slowPath(pid, cmd)
 		}
 
 		if errors.Is(err, ErrWrongClusterVersion) {
@@ -155,13 +159,13 @@ func (c *protocolClient) Propose(cmd *xlineapi.Command, useFastPath bool) (*prop
 }
 
 // Fast path of propose
-func (c *protocolClient) fastPath(cmd *xlineapi.Command) (*proposeRes, error) {
+func (c *protocolClient) fastPath(pid *curpapi.ProposeId, cmd *xlineapi.Command) (*proposeRes, error) {
 	fastCh := make(chan *fastRoundRes)
 	slowCh := make(chan *slowRoundRes)
 	errCh := make(chan error)
 
 	go func() {
-		res, err := c.fastRound(cmd)
+		res, err := c.fastRound(pid, cmd)
 		if err != nil {
 			errCh <- err
 			return
@@ -169,7 +173,7 @@ func (c *protocolClient) fastPath(cmd *xlineapi.Command) (*proposeRes, error) {
 		fastCh <- res
 	}()
 	go func() {
-		res, err := c.slowRound(cmd)
+		res, err := c.slowRound(pid, cmd)
 		if err != nil {
 			errCh <- err
 			return
@@ -192,16 +196,16 @@ func (c *protocolClient) fastPath(cmd *xlineapi.Command) (*proposeRes, error) {
 }
 
 // Slow path of propose
-func (c *protocolClient) slowPath(cmd *xlineapi.Command) (*proposeRes, error) {
+func (c *protocolClient) slowPath(pid *curpapi.ProposeId, cmd *xlineapi.Command) (*proposeRes, error) {
 	slowCh := make(chan *slowRoundRes)
 	errCh := make(chan error)
 
 	go func() {
 		// nolint: errcheck
-		c.fastRound(cmd)
+		c.fastRound(pid, cmd)
 	}()
 	go func() {
-		res, err := c.slowRound(cmd)
+		res, err := c.slowRound(pid, cmd)
 		if err != nil {
 			errCh <- err
 		}
@@ -218,13 +222,13 @@ func (c *protocolClient) slowPath(cmd *xlineapi.Command) (*proposeRes, error) {
 
 // The fast round of Curp protocol
 // It broadcast the requests to all the curp servers.
-func (c *protocolClient) fastRound(cmd *xlineapi.Command) (*fastRoundRes, error) {
-	c.logger.Info("fast round started", zap.Any("propose ID", cmd.ProposeId))
+func (c *protocolClient) fastRound(pid *curpapi.ProposeId, cmd *xlineapi.Command) (*fastRoundRes, error) {
+	c.logger.Info("fast round started", zap.Any("propose ID", pid))
 
 	resCh := make(chan *curpapi.ProposeResponse)
 	errCh := make(chan error)
-	var exeResult xlineapi.CommandResponse
-	var exeErr xlineapi.ExecuteError
+	var cmdEr xlineapi.CommandResponse
+	var cmdErr xlineapi.ExecuteError
 	var superQuorum = superQuorum(len(c.connects))
 	okCnt := 0
 	isLeaderOK := false
@@ -253,40 +257,35 @@ func (c *protocolClient) fastRound(cmd *xlineapi.Command) (*fastRoundRes, error)
 		}()
 	}
 
+	
 	for i := 0; i < len(c.connects); i++ {
 		select {
 		case res := <-resCh:
-			c.state.checkAndUpdate(*res.LeaderId, res.Term)
-			switch pr := res.ExeResult.(type) {
-			case *curpapi.ProposeResponse_Result:
-				okCnt++
-				switch cr := pr.Result.Result.(type) {
-				case *curpapi.CmdResult_Ok:
-					if isLeaderOK {
-						panic("should not set exe result twice")
-					}
-					isLeaderOK = true
-					err := proto.Unmarshal(cr.Ok, &exeResult)
-					if err != nil {
-						panic(err)
-					}
-				case *curpapi.CmdResult_Error:
-					err := proto.Unmarshal(cr.Error, &exeErr)
-					if err != nil {
-						panic(err)
-					}
-					c.logger.Info("fast round failed", zap.Any("propose ID", cmd.ProposeId))
-					return nil, &CommandError{err: &exeErr}
+			okCnt++
+			switch cmdRes := res.GetResult().Result.(type) {
+			case *curpapi.CmdResult_Ok:
+				if isLeaderOK {
+					panic("should not set exe result twice")
 				}
-			case *curpapi.ProposeResponse_Error:
-				c.logger.Warn("propose fail", zap.Error(errors.New(pr.Error.String())), zap.Any("propose ID", cmd.ProposeId))
-			default:
-				okCnt++
+				isLeaderOK = true
+				err := proto.Unmarshal(cmdRes.Ok, &cmdEr)
+				if err != nil {
+					panic(err)
+				}
+			case *curpapi.CmdResult_Error:
+				err := proto.Unmarshal(cmdRes.Error, &cmdErr)
+				if err != nil {
+					panic(err)
+				}
+				return nil, &CommandError{err: &cmdErr}
 			}
 		case err := <-errCh:
 			c.logger.Warn("propose fail", zap.Error(err))
 			if fromErr, ok := status.FromError(err); ok {
 				msg := fromErr.Message()
+				if msg == "shutting down" {
+					return nil, ErrShuttingDown
+				}
 				if msg == "wrong cluster version" {
 					return nil, ErrWrongClusterVersion
 				}
@@ -296,22 +295,23 @@ func (c *protocolClient) fastRound(cmd *xlineapi.Command) (*fastRoundRes, error)
 	}
 
 	if okCnt >= superQuorum && isLeaderOK {
-		c.logger.Info("fast round succeeded", zap.Any("propose ID", cmd.ProposeId))
-		return &fastRoundRes{er: &exeResult, isSucc: true}, nil
+		c.logger.Info("fast round succeeded", zap.Any("propose ID", pid))
+		return &fastRoundRes{er: &cmdEr, isSucc: true}, nil
 	}
 
-	c.logger.Info("fast round failed", zap.Any("propose ID", cmd.ProposeId))
-	return &fastRoundRes{er: &exeResult, isSucc: false}, nil
+	c.logger.Info("fast round failed", zap.Any("propose ID", pid))
+	return &fastRoundRes{isSucc: false}, nil
 }
 
 // The slow round of Curp protocol
-func (c *protocolClient) slowRound(cmd *xlineapi.Command) (*slowRoundRes, error) {
-	c.logger.Info("slow round started", zap.Any("propose ID", cmd.ProposeId))
+func (c *protocolClient) slowRound(pid *curpapi.ProposeId, cmd *xlineapi.Command) (*slowRoundRes, error) {
+	c.logger.Info("slow round started", zap.Any("propose ID", pid))
 
 	var asr xlineapi.SyncResponse
 	var er xlineapi.CommandResponse
 	var exeErr xlineapi.ExecuteError
 
+	retryTimeout := c.getBackoff()
 	retryCnt := c.config.RetryCount
 	for i := 0; i < retryCnt; i++ {
 		leaderID, err := c.getLeaderID()
@@ -324,14 +324,27 @@ func (c *protocolClient) slowRound(cmd *xlineapi.Command) (*slowRoundRes, error)
 		ctx, cancel := context.WithTimeout(context.Background(), c.config.ProposeTimeout)
 		defer cancel()
 		req := &curpapi.WaitSyncedRequest{
-			ProposeId: &curpapi.ProposeId{
-				ClientId: cmd.ProposeId.ClientId,
-				SeqNum:   cmd.ProposeId.SeqNum,
-			},
+			ProposeId:      pid,
 			ClusterVersion: c.clusterVersion,
 		}
 		res, err := protocolClient.WaitSynced(ctx, req)
 		if err != nil {
+			if fromErr, ok := status.FromError(err); ok {
+				msg := fromErr.Message()
+				if msg == "shutting down" {
+					return nil, ErrShuttingDown
+				}
+				if msg == "wrong cluster version" {
+					return nil, ErrWrongClusterVersion
+				}
+				if msg == "rpc transport" {
+					// it's quite likely that the leader has crashed, then we should wait for some time and fetch the leader again
+					time.Sleep(retryTimeout.nextRetry())
+					c.resendPropose(pid, cmd, nil)
+					continue
+				}
+				// TODO: redirect error
+			}
 			return nil, err
 		}
 
@@ -347,7 +360,7 @@ func (c *protocolClient) slowRound(cmd *xlineapi.Command) (*slowRoundRes, error)
 				if err != nil {
 					panic(err)
 				}
-				c.logger.Info("slow round failed", zap.Any("propose ID", cmd.ProposeId))
+				c.logger.Info("slow round failed", zap.Any("propose ID", pid))
 				return nil, &CommandError{err: &exeErr}
 			}
 		}
@@ -363,29 +376,73 @@ func (c *protocolClient) slowRound(cmd *xlineapi.Command) (*slowRoundRes, error)
 				if err != nil {
 					panic(err)
 				}
-				c.logger.Info("slow round failed", zap.Any("propose ID", cmd.ProposeId))
+				c.logger.Info("slow round failed", zap.Any("propose ID", pid))
 				return nil, &CommandError{err: &exeErr}
 			}
 		}
 
-		c.logger.Info("slow round succeeded", zap.Any("propose ID", cmd.ProposeId))
+		c.logger.Info("slow round succeeded", zap.Any("propose ID", pid))
 		return &slowRoundRes{
 			asr: &asr,
 			er:  &er,
 		}, nil
 	}
 
-	return nil, errors.New("slow round timeout")
+	return nil, ErrTimeout
+}
+
+// Resend the propose only to the leader. This is used when leader changes and we need to ensure that the propose is received by the new leader.
+func (c *protocolClient) resendPropose(pid *curpapi.ProposeId, cmd *xlineapi.Command, newLeader *ServerId) error {
+	retryTimeout := c.getBackoff()
+	retryCnt := c.config.RetryCount
+
+	for i := 0; i < retryCnt; i++ {
+		time.Sleep(retryTimeout.nextRetry())
+
+		var leaderID ServerId
+		if newLeader != nil {
+			leaderID = *newLeader
+		} else {
+			res, err := c.fetchLeader()
+			if err != nil {
+				return err
+			}
+			leaderID = *res
+		}
+
+		bcmd, err := proto.Marshal(cmd)
+		if err != nil {
+			return err
+		}
+
+		protocolClient := curpapi.NewProtocolClient(c.connects[leaderID])
+		ctx, cancel := context.WithTimeout(context.Background(), c.config.ProposeTimeout)
+		defer cancel()
+		_, err = protocolClient.Propose(ctx, &curpapi.ProposeRequest{ProposeId: pid, Command: bcmd, ClusterVersion: c.clusterVersion})
+		if err != nil {
+			if fromErr, ok := status.FromError(err); ok {
+				msg := fromErr.Message()
+				if msg == "shutting down" {
+					return ErrShuttingDown
+				}
+				if msg == "wrong cluster version" {
+					return ErrWrongClusterVersion
+				}
+			}
+		}
+	}
+
+	return ErrTimeout
 }
 
 // Generate a propose id
-func (c *protocolClient) GenProposeID() (*xlineapi.ProposeId, error) {
+func (c *protocolClient) GenProposeID() (*curpapi.ProposeId, error) {
 	clientID, err := c.getClientID()
 	if err != nil {
 		return nil, err
 	}
 	seqNum := c.newSeqNum()
-	return &xlineapi.ProposeId{
+	return &curpapi.ProposeId{
 		ClientId: clientID,
 		SeqNum:   seqNum,
 	}, nil

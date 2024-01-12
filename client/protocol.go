@@ -281,15 +281,16 @@ func (c *protocolClient) fastRound(pid *curpapi.ProposeId, cmd *xlineapi.Command
 				return nil, &CommandError{err: &exeErr}
 			}
 		case err := <-errCh:
-			// TODO: error handling
 			c.logger.Warn("propose fail", zap.Error(err))
 			if fromErr, ok := status.FromError(err); ok {
 				msg := fromErr.Message()
-				if msg == "wrong cluster version" {
+				switch msg {
+				case "shutting down":
+					return nil, ErrShuttingDown
+				case "wrong cluster version":
 					return nil, ErrWrongClusterVersion
 				}
 			}
-			return nil, err
 		}
 	}
 
@@ -311,6 +312,7 @@ func (c *protocolClient) slowRound(pid *curpapi.ProposeId, cmd *xlineapi.Command
 	var exeErr xlineapi.ExecuteError
 
 	retryCnt := c.config.RetryCount
+	retryTimeout := c.getBackoff()
 	for i := 0; i < retryCnt; i++ {
 		leaderID, err := c.getLeaderID()
 		if err != nil {
@@ -327,7 +329,28 @@ func (c *protocolClient) slowRound(pid *curpapi.ProposeId, cmd *xlineapi.Command
 		}
 		res, err := protocolClient.WaitSynced(ctx, req)
 		if err != nil {
-			return nil, err
+			if fromErr, ok := status.FromError(err); ok {
+				msg := fromErr.Message()
+				switch msg {
+				case "shutting down":
+					return nil, ErrShuttingDown
+				case "wrong cluster version":
+					return nil, ErrWrongClusterVersion
+				case "rpc transport":
+					// it's quite likely that the leader has crashed, then we should wait for some time and fetch the leader again
+					time.Sleep(retryTimeout.nextRetry())
+					err := c.resendPropose(pid, cmd, nil)
+					if err !=nil {
+						return nil, err
+					}
+					continue
+				case "redirect":
+					// TODO: redirect error
+					return nil, ErrRedirect
+				default:
+					return nil, err
+				}
+			}
 		}
 
 		if res.AfterSyncResult != nil {
@@ -370,7 +393,51 @@ func (c *protocolClient) slowRound(pid *curpapi.ProposeId, cmd *xlineapi.Command
 		}, nil
 	}
 
-	return nil, errors.New("slow round timeout")
+	return nil, ErrTimeout
+}
+
+// Resend the propose only to the leader. This is used when leader changes and we need to ensure that the propose is received by the new leader.
+func (c *protocolClient) resendPropose(pid *curpapi.ProposeId, cmd *xlineapi.Command, newLeader *ServerId) error {
+	retryTimeout := c.getBackoff()
+	retryCnt := c.config.RetryCount
+
+	for i := 0; i < retryCnt; i++ {
+		time.Sleep(retryTimeout.nextRetry())
+
+		var leaderID ServerId
+		if newLeader != nil {
+			leaderID = *newLeader
+		} else {
+			res, err := c.fetchLeader()
+			if err != nil {
+				return err
+			}
+			leaderID = *res
+		}
+
+		bcmd, err := proto.Marshal(cmd)
+		if err != nil {
+			return err
+		}
+
+		protocolClient := curpapi.NewProtocolClient(c.connects[leaderID])
+		ctx, cancel := context.WithTimeout(context.Background(), c.config.ProposeTimeout)
+		defer cancel()
+		_, err = protocolClient.Propose(ctx, &curpapi.ProposeRequest{ProposeId: pid, Command: bcmd, ClusterVersion: c.clusterVersion})
+		if err != nil {
+			if fromErr, ok := status.FromError(err); ok {
+				msg := fromErr.Message()
+				if msg == "shutting down" {
+					return ErrShuttingDown
+				}
+				if msg == "wrong cluster version" {
+					return ErrWrongClusterVersion
+				}
+			}
+		}
+	}
+
+	return ErrTimeout
 }
 
 // Generate a propose id

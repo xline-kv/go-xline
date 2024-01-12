@@ -14,7 +14,7 @@
 
 package client
 
-import "github.com/xline-kv/go-xline/api/xline"
+import "github.com/xline-kv/go-xline/api/gen/xline"
 
 type KV interface {
 	// Put puts a key-value pair into xline.
@@ -77,6 +77,7 @@ func NewKV(curpClient Curp, token string) KV {
 // Put a key-value into the store
 func (c *kvClient) Put(key, val []byte, opts ...OpOption) (*PutResponse, error) {
 	op := OpPut(key, val, opts...)
+	// TODO: buildCmdFromOp
 	krs := []*xlineapi.KeyRange{op.toKeyRange()}
 	req := xlineapi.RequestWithToken{
 		Token: &c.token,
@@ -84,12 +85,8 @@ func (c *kvClient) Put(key, val []byte, opts ...OpOption) (*PutResponse, error) 
 			PutRequest: op.toPutReq(),
 		},
 	}
-	pid, err := c.curpClient.GenProposeID()
-	if err != nil {
-		return nil, err
-	}
-	cmd := xlineapi.Command{Keys: krs, Request: &req, ProposeId: pid}
-	res, err := c.curpClient.Propose(&cmd, true)
+	cmd := &xlineapi.Command{Keys: krs, Request: &req}
+	res, err := c.curpClient.Propose(cmd, true)
 	if err != nil {
 		return nil, err
 	}
@@ -99,6 +96,7 @@ func (c *kvClient) Put(key, val []byte, opts ...OpOption) (*PutResponse, error) 
 // Range a range of keys from the store
 func (c *kvClient) Range(key []byte, opt ...OpOption) (*RangeResponse, error) {
 	op := OpRange(key, opt...)
+	// TODO: buildCmdFromOp
 	krs := []*xlineapi.KeyRange{op.toKeyRange()}
 	req := xlineapi.RequestWithToken{
 		Token: &c.token,
@@ -106,11 +104,7 @@ func (c *kvClient) Range(key []byte, opt ...OpOption) (*RangeResponse, error) {
 			RangeRequest: op.toRangeReq(),
 		},
 	}
-	pid, err := c.curpClient.GenProposeID()
-	if err != nil {
-		return nil, err
-	}
-	cmd := xlineapi.Command{Keys: krs, Request: &req, ProposeId: pid}
+	cmd := xlineapi.Command{Keys: krs, Request: &req}
 	res, err := c.curpClient.Propose(&cmd, true)
 	if err != nil {
 		return nil, err
@@ -121,6 +115,7 @@ func (c *kvClient) Range(key []byte, opt ...OpOption) (*RangeResponse, error) {
 // Delete a range of keys from the store
 func (c *kvClient) Delete(key string, opts ...OpOption) (*DeleteResponse, error) {
 	op := OpDelete(key, opts...)
+	// TODO: buildCmdFromOp
 	krs := []*xlineapi.KeyRange{op.toKeyRange()}
 	req := xlineapi.RequestWithToken{
 		Token: &c.token,
@@ -128,11 +123,7 @@ func (c *kvClient) Delete(key string, opts ...OpOption) (*DeleteResponse, error)
 			DeleteRangeRequest: op.toDeleteReq(),
 		},
 	}
-	pid, err := c.curpClient.GenProposeID()
-	if err != nil {
-		return nil, err
-	}
-	cmd := xlineapi.Command{Keys: krs, Request: &req, ProposeId: pid}
+	cmd := xlineapi.Command{Keys: krs, Request: &req}
 	res, err := c.curpClient.Propose(&cmd, false)
 	if err != nil {
 		return nil, err
@@ -152,17 +143,14 @@ func (c *kvClient) Txn() Txn {
 func (c *kvClient) Compact(rev int64, opts ...OpOption) (*CompactResponse, error) {
 	r := OpCompact(rev, opts...).toCompactReq()
 	useFastPath := r.Physical
+	// TODO: buildCmdFromOp
 	req := xlineapi.RequestWithToken{
 		Token: &c.token,
 		RequestWrapper: &xlineapi.RequestWithToken_CompactionRequest{
 			CompactionRequest: r,
 		},
 	}
-	pid, err := c.curpClient.GenProposeID()
-	if err != nil {
-		return nil, err
-	}
-	cmd := xlineapi.Command{Request: &req, ProposeId: pid}
+	cmd := xlineapi.Command{Request: &req}
 	res, err := c.curpClient.Propose(&cmd, useFastPath)
 	if err != nil {
 		return nil, err

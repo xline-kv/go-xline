@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/xline-kv/go-xline/api/xline"
+	"github.com/xline-kv/go-xline/api/gen/xline"
 	"github.com/xline-kv/go-xline/client"
 	"github.com/xline-kv/go-xline/xlog"
 	"go.uber.org/zap/zapcore"

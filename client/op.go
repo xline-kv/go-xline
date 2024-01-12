@@ -14,7 +14,7 @@
 
 package client
 
-import "github.com/xline-kv/go-xline/api/xline"
+import "github.com/xline-kv/go-xline/api/gen/xline"
 
 // Op represents an Operation that kv can execute.
 type Op struct {

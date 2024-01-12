@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	xlineapi "github.com/xline-kv/go-xline/api/xline"
+	"github.com/xline-kv/go-xline/api/gen/xline"
 )
 
 type CommandError struct {

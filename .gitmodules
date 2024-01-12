@@ -4,3 +4,6 @@
 [submodule "api/proto/xline-proto"]
 	path = api/proto/xline-proto
 	url = git@github.com:xline-kv/xline-proto.git
+[submodule "mock-xline"]
+	path = mock-xline
+	url = https://github.com/xline-kv/mock-xline.git

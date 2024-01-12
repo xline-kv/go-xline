@@ -18,7 +18,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/xline-kv/go-xline/api/xline"
+	"github.com/xline-kv/go-xline/api/gen/xline"
 	"github.com/xline-kv/go-xline/xlog"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"

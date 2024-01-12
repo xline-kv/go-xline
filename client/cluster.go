@@ -17,7 +17,7 @@ package client
 import (
 	"context"
 
-	"github.com/xline-kv/go-xline/api/xline"
+	"github.com/xline-kv/go-xline/api/gen/xline"
 	"google.golang.org/grpc"
 )
 

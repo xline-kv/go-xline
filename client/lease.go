@@ -18,7 +18,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/xline-kv/go-xline/api/xline"
+	"github.com/xline-kv/go-xline/api/gen/xline"
 	"github.com/xline-kv/go-xline/xlog"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -101,11 +101,7 @@ func (c *leaseClient) Grant(ttl int64, opts ...LeaseOption) (*LeaseGrantResponse
 			LeaseGrantRequest: request,
 		},
 	}
-	pid, err := c.curpClient.GenProposeID()
-	if err != nil {
-		return nil, err
-	}
-	cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: pid}
+	cmd := xlineapi.Command{Request: &requestWithToken}
 
 	res, err := c.curpClient.Propose(&cmd, true)
 	if err != nil {
@@ -122,11 +118,7 @@ func (c *leaseClient) Revoke(id int64) (*LeaseRevokeResponse, error) {
 			LeaseRevokeRequest: &xlineapi.LeaseRevokeRequest{ID: id},
 		},
 	}
-	pid, err := c.curpClient.GenProposeID()
-	if err != nil {
-		return nil, err
-	}
-	cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: pid}
+	cmd := xlineapi.Command{Request: &requestWithToken}
 
 	res, err := c.curpClient.Propose(&cmd, true)
 	if err != nil {
@@ -213,11 +205,7 @@ func (c *leaseClient) Leases() (*LeaseLeasesResponse, error) {
 			LeaseLeasesRequest: &xlineapi.LeaseLeasesRequest{},
 		},
 	}
-	pid, err := c.curpClient.GenProposeID()
-	if err != nil {
-		return nil, err
-	}
-	cmd := xlineapi.Command{Request: &requestWithToken, ProposeId: pid}
+	cmd := xlineapi.Command{Request: &requestWithToken}
 
 	res, err := c.curpClient.Propose(&cmd, true)
 	if err != nil {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 
-	"github.com/xline-kv/go-xline/api/xline"
+	"github.com/xline-kv/go-xline/api/gen/xline"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

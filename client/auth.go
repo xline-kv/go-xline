@@ -21,7 +21,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/xline-kv/go-xline/api/xline"
+	"github.com/xline-kv/go-xline/api/gen/xline"
 	"golang.org/x/crypto/pbkdf2"
 )
 
@@ -488,11 +488,7 @@ func (c *authClient) RoleRevokePermission(role string, key, rangeEnd []byte) (*A
 
 // Send request using fast path
 func (c *authClient) handleReq(req *xlineapi.RequestWithToken, useFastPath bool) (*proposeRes, error) {
-	pid, err := c.curpClient.GenProposeID()
-	if err != nil {
-		return nil, err
-	}
-	cmd := xlineapi.Command{Request: req, ProposeId: pid}
+	cmd := xlineapi.Command{Request: req}
 
 	if useFastPath {
 		res, err := c.curpClient.Propose(&cmd, true)

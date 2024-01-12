@@ -14,7 +14,7 @@
 
 package client
 
-import "github.com/xline-kv/go-xline/api/xline"
+import "github.com/xline-kv/go-xline/api/gen/xline"
 
 type CompareTarget int
 type CompareResult int

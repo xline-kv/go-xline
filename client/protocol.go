@@ -281,15 +281,22 @@ func (c *protocolClient) fastRound(pid *curpapi.ProposeId, cmd *xlineapi.Command
 				return nil, &CommandError{err: &exeErr}
 			}
 		case err := <-errCh:
-			// TODO: error handling
 			c.logger.Warn("propose fail", zap.Error(err))
 			if fromErr, ok := status.FromError(err); ok {
-				msg := fromErr.Message()
-				if msg == "wrong cluster version" {
+				curpErr := curpapi.CurpError{}
+				dtl := fromErr.Details()
+				err := proto.Unmarshal(dtl[0].([]byte), &curpErr)
+				if err != nil {
+					return nil, err
+				}
+				if curpErr.GetShuttingDown() != nil {
+					return nil, ErrShuttingDown
+				} else if curpErr.GetWrongClusterVersion() != nil {
 					return nil, ErrWrongClusterVersion
+				} else {
+					continue
 				}
 			}
-			return nil, err
 		}
 	}
 
@@ -311,6 +318,7 @@ func (c *protocolClient) slowRound(pid *curpapi.ProposeId, cmd *xlineapi.Command
 	var exeErr xlineapi.ExecuteError
 
 	retryCnt := c.config.RetryCount
+	retryTimeout := c.getBackoff()
 	for i := 0; i < retryCnt; i++ {
 		leaderID, err := c.getLeaderID()
 		if err != nil {
@@ -327,7 +335,39 @@ func (c *protocolClient) slowRound(pid *curpapi.ProposeId, cmd *xlineapi.Command
 		}
 		res, err := protocolClient.WaitSynced(ctx, req)
 		if err != nil {
-			return nil, err
+			if fromErr, ok := status.FromError(err); ok {
+				curpErr := curpapi.CurpError{}
+				dtl := fromErr.Details()
+				err := proto.Unmarshal(dtl[0].([]byte), &curpErr)
+				if err != nil {
+					return nil, err
+				}
+				if curpErr.GetShuttingDown() != nil {
+					return nil, ErrShuttingDown
+				} else if curpErr.GetWrongClusterVersion() != nil {
+					return nil, ErrWrongClusterVersion
+				} else if curpErr.GetRpcTransport() != nil {
+					// it's quite likely that the leader has crashed, then we should wait for some time and fetch the leader again
+					time.Sleep(retryTimeout.nextRetry())
+					err := c.resendPropose(pid, cmd, nil)
+					if err != nil {
+						return nil, err
+					}
+					continue
+				} else if curpErr.GetRedirect() != nil {
+					newLeader := curpErr.GetRedirect().GetLeaderId()
+					term := curpErr.GetRedirect().GetTerm()
+					c.state.checkAndUpdate(newLeader, term)
+					// resend the propose to the new leader
+					err := c.resendPropose(pid, cmd, &newLeader)
+					if err != nil {
+						return nil, err
+					}
+					continue
+				} else {
+					return nil, NewErrInternalError(err)
+				}
+			}
 		}
 
 		if res.AfterSyncResult != nil {
@@ -370,7 +410,57 @@ func (c *protocolClient) slowRound(pid *curpapi.ProposeId, cmd *xlineapi.Command
 		}, nil
 	}
 
-	return nil, errors.New("slow round timeout")
+	return nil, ErrTimeout
+}
+
+// Resend the propose only to the leader. This is used when leader changes and we need to ensure that the propose is received by the new leader.
+func (c *protocolClient) resendPropose(pid *curpapi.ProposeId, cmd *xlineapi.Command, newLeader *ServerId) error {
+	retryTimeout := c.getBackoff()
+	retryCnt := c.config.RetryCount
+
+	for i := 0; i < retryCnt; i++ {
+		time.Sleep(retryTimeout.nextRetry())
+
+		var leaderID ServerId
+		if newLeader != nil {
+			leaderID = *newLeader
+		} else {
+			res, err := c.fetchLeader()
+			if err != nil {
+				return err
+			}
+			leaderID = *res
+		}
+
+		bcmd, err := proto.Marshal(cmd)
+		if err != nil {
+			return err
+		}
+
+		protocolClient := curpapi.NewProtocolClient(c.connects[leaderID])
+		ctx, cancel := context.WithTimeout(context.Background(), c.config.ProposeTimeout)
+		defer cancel()
+		_, err = protocolClient.Propose(ctx, &curpapi.ProposeRequest{ProposeId: pid, Command: bcmd, ClusterVersion: c.clusterVersion})
+		if err != nil {
+			if fromErr, ok := status.FromError(err); ok {
+				curpErr := curpapi.CurpError{}
+				dtl := fromErr.Details()
+				err := proto.Unmarshal(dtl[0].([]byte), &curpErr)
+				if err != nil {
+					return err
+				}
+				if curpErr.GetShuttingDown() != nil {
+					return ErrShuttingDown
+				} else if curpErr.GetWrongClusterVersion() != nil {
+					return ErrWrongClusterVersion
+				} else {
+					continue
+				}
+			}
+		}
+	}
+
+	return ErrTimeout
 }
 
 // Generate a propose id

@@ -117,4 +117,5 @@ We aim to maintain compatibility with each corresponding Xline version, and upda
 
 | go-xline | Xline |
 | --- | --- |
-| v0.1.x | v0.6.x |
+| v0.1.0 | v0.6.0 |
+| v0.1.1 | v0.6.1 |

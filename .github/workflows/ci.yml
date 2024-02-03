@@ -73,12 +73,35 @@ jobs:
         env:
           GO111MODULE: 'auto'
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+  mock:
+    name: Test Mock Sample Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: true
-          verbose: true
+          path: go-xline
+
+      - name: Checkout mock xline
+        uses: actions/checkout@v4
+        with:
+          repository: xline-kv/mock-xline
+          path: mock-xline
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{env.GO_VERSION}}
+
+      - name: Start the cluster
+        run: |
+          cd mock-xline
+          ./scripts/quick_start.sh
+
+      - name: Run tests
+        run: |
+          cd go-xline
+          go test ./pkg/curp -v
 
   commit:
     name: Commit Message Validation

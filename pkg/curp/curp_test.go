@@ -12,11 +12,11 @@ import (
 
 func TestUnaryFetchClusters(t *testing.T) {
 	allMembers := map[serverId][]string{
-		0: {"127.0.0.1:8081"},
-		1: {"127.0.0.1:8082"},
-		2: {"127.0.0.1:8083"},
-		3: {"127.0.0.1:8084"},
-		4: {"127.0.0.1:8085"},
+		0: {"127.0.0.1:48081"},
+		1: {"127.0.0.1:48082"},
+		2: {"127.0.0.1:48083"},
+		3: {"127.0.0.1:48084"},
+		4: {"127.0.0.1:48085"},
 	}
 	unaryConfig := newUnaryConfig(1*time.Second, 2*time.Second)
 	unary, err := newUnaryBuilder(allMembers, unaryConfig).build()
@@ -35,11 +35,11 @@ func TestUnaryFetchClusters(t *testing.T) {
 
 func TestUnaryFetchClustersFailed(t *testing.T) {
 	allMembers := map[serverId][]string{
-		0: {"127.0.0.1:8081"},
-		1: {"127.0.0.1:8082"},
-		2: {"127.0.0.1:8083"},
-		3: {"127.0.0.1:8084"},
-		4: {"127.0.0.1:8085"},
+		0: {"127.0.0.1:48081"},
+		1: {"127.0.0.1:48082"},
+		2: {"127.0.0.1:48083"},
+		3: {"127.0.0.1:48084"},
+		4: {"127.0.0.1:48085"},
 	}
 	unaryConfig := newUnaryConfig(1*time.Second, 2*time.Second)
 	unary, err := newUnaryBuilder(allMembers, unaryConfig).build()
@@ -51,11 +51,11 @@ func TestUnaryFetchClustersFailed(t *testing.T) {
 
 func TestFastRoundWorks(t *testing.T) {
 	allMembers := map[serverId][]string{
-		0: {"127.0.0.1:8081"},
-		1: {"127.0.0.1:8082"},
-		2: {"127.0.0.1:8083"},
-		3: {"127.0.0.1:8084"},
-		4: {"127.0.0.1:8085"},
+		0: {"127.0.0.1:48081"},
+		1: {"127.0.0.1:48082"},
+		2: {"127.0.0.1:48083"},
+		3: {"127.0.0.1:48084"},
+		4: {"127.0.0.1:48085"},
 	}
 	unaryConfig := newUnaryConfig(1*time.Second, 2*time.Second)
 	unary, err := newUnaryBuilder(allMembers, unaryConfig).build()
@@ -67,9 +67,9 @@ func TestFastRoundWorks(t *testing.T) {
 
 func TestFastRoundReturnEarlyErr(t *testing.T) {
 	allMembers := map[serverId][]string{
-		0: {"127.0.0.1:8081"},
-		1: {"127.0.0.1:8082"},
-		2: {"127.0.0.1:8083"},
+		0: {"127.0.0.1:48081"},
+		1: {"127.0.0.1:48082"},
+		2: {"127.0.0.1:48083"},
 	}
 	unaryConfig := newUnaryConfig(1*time.Second, 2*time.Second)
 	unary, err := newUnaryBuilder(allMembers, unaryConfig).build()
@@ -81,11 +81,11 @@ func TestFastRoundReturnEarlyErr(t *testing.T) {
 
 func TestFastRoundLessQuorum(t *testing.T) {
 	allMembers := map[serverId][]string{
-		0: {"127.0.0.1:8081"},
-		1: {"127.0.0.1:8082"},
-		2: {"127.0.0.1:8083"},
-		3: {"127.0.0.1:8084"},
-		4: {"127.0.0.1:8085"},
+		0: {"127.0.0.1:48081"},
+		1: {"127.0.0.1:48082"},
+		2: {"127.0.0.1:48083"},
+		3: {"127.0.0.1:48084"},
+		4: {"127.0.0.1:48085"},
 	}
 	unaryConfig := newUnaryConfig(1*time.Second, 2*time.Second)
 	unary, err := newUnaryBuilder(allMembers, unaryConfig).build()
@@ -97,11 +97,11 @@ func TestFastRoundLessQuorum(t *testing.T) {
 
 func TestFastRoundWithTwoLeader(t *testing.T) {
 	allMembers := map[serverId][]string{
-		0: {"127.0.0.1:8081"},
-		1: {"127.0.0.1:8082"},
-		2: {"127.0.0.1:8083"},
-		3: {"127.0.0.1:8084"},
-		4: {"127.0.0.1:8085"},
+		0: {"127.0.0.1:48081"},
+		1: {"127.0.0.1:48082"},
+		2: {"127.0.0.1:48083"},
+		3: {"127.0.0.1:48084"},
+		4: {"127.0.0.1:48085"},
 	}
 	unaryConfig := newUnaryConfig(1*time.Second, 2*time.Second)
 	unary, err := newUnaryBuilder(allMembers, unaryConfig).build()
@@ -115,11 +115,11 @@ func TestFastRoundWithTwoLeader(t *testing.T) {
 
 func TestFastRoundWithoutLeader(t *testing.T) {
 	allMembers := map[serverId][]string{
-		0: {"127.0.0.1:8081"},
-		1: {"127.0.0.1:8082"},
-		2: {"127.0.0.1:8083"},
-		3: {"127.0.0.1:8084"},
-		4: {"127.0.0.1:8085"},
+		0: {"127.0.0.1:48081"},
+		1: {"127.0.0.1:48082"},
+		2: {"127.0.0.1:48083"},
+		3: {"127.0.0.1:48084"},
+		4: {"127.0.0.1:48085"},
 	}
 	unaryConfig := newUnaryConfig(1*time.Second, 2*time.Second)
 	unary, err := newUnaryBuilder(allMembers, unaryConfig).build()
@@ -131,11 +131,11 @@ func TestFastRoundWithoutLeader(t *testing.T) {
 
 func TestUnarySlowRoundFetchLeaderFirst(t *testing.T) {
 	allMembers := map[serverId][]string{
-		0: {"127.0.0.1:8081"},
-		1: {"127.0.0.1:8082"},
-		2: {"127.0.0.1:8083"},
-		3: {"127.0.0.1:8084"},
-		4: {"127.0.0.1:8085"},
+		0: {"127.0.0.1:48081"},
+		1: {"127.0.0.1:48082"},
+		2: {"127.0.0.1:48083"},
+		3: {"127.0.0.1:48084"},
+		4: {"127.0.0.1:48085"},
 	}
 	unaryConfig := newUnaryConfig(1*time.Second, 2*time.Second)
 	unary, err := newUnaryBuilder(allMembers, unaryConfig).build()
@@ -147,11 +147,11 @@ func TestUnarySlowRoundFetchLeaderFirst(t *testing.T) {
 
 func TestUnaryProposeFastPathWorks(t *testing.T) {
 	allMembers := map[serverId][]string{
-		0: {"127.0.0.1:8081"},
-		1: {"127.0.0.1:8082"},
-		2: {"127.0.0.1:8083"},
-		3: {"127.0.0.1:8084"},
-		4: {"127.0.0.1:8085"},
+		0: {"127.0.0.1:48081"},
+		1: {"127.0.0.1:48082"},
+		2: {"127.0.0.1:48083"},
+		3: {"127.0.0.1:48084"},
+		4: {"127.0.0.1:48085"},
 	}
 	unaryConfig := newUnaryConfig(1*time.Second, 2*time.Second)
 	unary, err := newUnaryBuilder(allMembers, unaryConfig).setLeaderState(0, 1).build()
@@ -163,11 +163,11 @@ func TestUnaryProposeFastPathWorks(t *testing.T) {
 
 func TestUnaryProposeSlowPathWorks(t *testing.T) {
 	allMembers := map[serverId][]string{
-		0: {"127.0.0.1:8081"},
-		1: {"127.0.0.1:8082"},
-		2: {"127.0.0.1:8083"},
-		3: {"127.0.0.1:8084"},
-		4: {"127.0.0.1:8085"},
+		0: {"127.0.0.1:48081"},
+		1: {"127.0.0.1:48082"},
+		2: {"127.0.0.1:48083"},
+		3: {"127.0.0.1:48084"},
+		4: {"127.0.0.1:48085"},
 	}
 	unaryConfig := newUnaryConfig(1*time.Second, 2*time.Second)
 	unary, err := newUnaryBuilder(allMembers, unaryConfig).setLeaderState(0, 1).build()
@@ -180,11 +180,11 @@ func TestUnaryProposeSlowPathWorks(t *testing.T) {
 
 func TestUnaryProposeFastPathFallbackSlowPath(t *testing.T) {
 	allMembers := map[serverId][]string{
-		0: {"127.0.0.1:8081"},
-		1: {"127.0.0.1:8082"},
-		2: {"127.0.0.1:8083"},
-		3: {"127.0.0.1:8084"},
-		4: {"127.0.0.1:8085"},
+		0: {"127.0.0.1:48081"},
+		1: {"127.0.0.1:48082"},
+		2: {"127.0.0.1:48083"},
+		3: {"127.0.0.1:48084"},
+		4: {"127.0.0.1:48085"},
 	}
 	unaryConfig := newUnaryConfig(1*time.Second, 2*time.Second)
 	unary, err := newUnaryBuilder(allMembers, unaryConfig).setLeaderState(0, 1).build()
@@ -196,7 +196,7 @@ func TestUnaryProposeFastPathFallbackSlowPath(t *testing.T) {
 }
 
 func TestUnaryProposeReturnEarlyErr(t *testing.T) {
-	allMembers := map[serverId][]string{0: {"127.0.0.1:8081"}}
+	allMembers := map[serverId][]string{0: {"127.0.0.1:48081"}}
 	unaryConfig := newUnaryConfig(1*time.Second, 2*time.Second)
 	unary, err := newUnaryBuilder(allMembers, unaryConfig).setLeaderState(0, 1).build()
 	assert.Nil(t, err)

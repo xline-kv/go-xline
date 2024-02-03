@@ -137,10 +137,7 @@ func (r *WaitSyncedResponse) DeserializeResult() (*WaitSyncedResult, *CurpError)
 	// ER: Some(OK), ASR: Some(OK)  <-  WaitSyncedResponse::new_success
 	// ER: Some(Err), ASR: None     <-  WaitSyncedResponse::new_er_error
 	// ER: Some(OK), ASR: Some(Err) <- WaitSyncedResponse::new_asr_error
-	if r.ExeResult != nil &&
-		r.ExeResult.Result.(*curppb.CmdResult_Ok) != nil &&
-		r.AfterSyncResult != nil &&
-		r.AfterSyncResult.Result.(*curppb.CmdResult_Ok) != nil {
+	if r.ExeResult.Result.(*curppb.CmdResult_Ok) != nil && r.AfterSyncResult.Result.(*curppb.CmdResult_Ok) != nil {
 		er := xlinepb.CommandResponse{}
 		asr := xlinepb.SyncResponse{}
 		err := proto.Unmarshal(r.ExeResult.Result.(*curppb.CmdResult_Ok).Ok, &er)
@@ -152,22 +149,24 @@ func (r *WaitSyncedResponse) DeserializeResult() (*WaitSyncedResult, *CurpError)
 			return nil, NewCurpError(err)
 		}
 		return &WaitSyncedResult{Ok: &WaitSyncedResultOk{ExeResult: &er, AfterSyncedResult: &asr}}, nil
-	} else if (r.ExeResult != nil &&
-		r.ExeResult.Result.(*curppb.CmdResult_Error) != nil &&
-		r.AfterSyncResult == nil) ||
-		(r.ExeResult != nil &&
-			r.ExeResult.Result.(*curppb.CmdResult_Error) != nil &&
-			r.AfterSyncResult == nil &&
-			r.AfterSyncResult.Result.(*curppb.CmdResult_Error) != nil) {
+	}
+	if r.ExeResult.Result.(*curppb.CmdResult_Error) != nil && r.AfterSyncResult == nil {
 		err := xlinepb.ExecuteError{}
 		e := proto.Unmarshal(r.ExeResult.Result.(*curppb.CmdResult_Error).Error, &err)
 		if e != nil {
 			return nil, NewCurpError(e)
 		}
 		return &WaitSyncedResult{Err: &err}, nil
-	} else {
-		panic("got unexpected WaitSyncedResponse")
 	}
+	if r.ExeResult.Result.(*curppb.CmdResult_Ok) != nil && r.AfterSyncResult.Result.(*curppb.CmdResult_Error) != nil {
+		err := xlinepb.ExecuteError{}
+		e := proto.Unmarshal(r.AfterSyncResult.Result.(*curppb.CmdResult_Error).Error, &err)
+		if e != nil {
+			return nil, NewCurpError(e)
+		}
+		return &WaitSyncedResult{Err: &err}, nil
+	}
+	panic("unknown result type")
 }
 
 // The fast result

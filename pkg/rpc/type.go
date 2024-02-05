@@ -133,10 +133,10 @@ func NewWaitSyncedResponse(res *curppb.WaitSyncedResponse) *WaitSyncedResponse {
 
 // Deserialize result in response
 func (r *WaitSyncedResponse) DeserializeResult() (*WaitSyncedResult, *CurpError) {
-	// according to the above methods, we can only get the following response union
-	// ER: Some(OK), ASR: Some(OK)  <-  WaitSyncedResponse::new_success
-	// ER: Some(Err), ASR: None     <-  WaitSyncedResponse::new_er_error
-	// ER: Some(OK), ASR: Some(Err) <- WaitSyncedResponse::new_asr_error
+	// according to the above methods, we can only get the following `WaitSyncedResult`
+	// ER.Ok != nil, Asr.Ok != nil  <-  WaitSyncedResponse.Ok
+	// ER.Err != nil, ASR == nil     <-  WaitSyncedResponse.Err
+	// ER.Ok != nil, ASR.Err != nil <- WaitSyncedResponse.Err
 	if r.ExeResult.Result.(*curppb.CmdResult_Ok) != nil && r.AfterSyncResult.Result.(*curppb.CmdResult_Ok) != nil {
 		er := xlinepb.CommandResponse{}
 		asr := xlinepb.SyncResponse{}

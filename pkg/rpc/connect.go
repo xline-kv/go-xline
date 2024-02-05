@@ -169,7 +169,7 @@ func (c *Connect) WaitSynced(
 		}(conn)
 	}
 
-	// find the first one return `ProposeConfChangeRequest`
+	// find the first one return `WaitSyncedResponse`
 	select {
 	case res := <-resCh:
 		return res, nil
@@ -201,7 +201,7 @@ func (c *Connect) FetchCluster(
 		}(conn)
 	}
 
-	// find the first one return `ProposeConfChangeRequest`
+	// find the first one return `FetchClusterResponse`
 	select {
 	case res := <-resCh:
 		return res, nil

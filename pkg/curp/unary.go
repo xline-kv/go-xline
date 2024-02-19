@@ -311,6 +311,11 @@ func (u *unary) checkAndUpdate(res *curppb.FetchClusterResponse) error {
 }
 
 // Update leader
+func (u *unary) updateLeader(leaderId *serverId, term uint64) bool {
+	return u.checkAndUpdateLeader(u.state, leaderId, term)
+}
+
+// Update leader
 func (u *unary) checkAndUpdateLeader(state *state, leaderId *serverId, term uint64) bool {
 	if state.term < term {
 		// reset term only when the resp has leader id to prevent:
@@ -347,7 +352,7 @@ func (u *unary) checkAndUpdateLeader(state *state, leaderId *serverId, term uint
 func (u *unary) propose(cmd *xlinepb.Command, useFastPath bool) (*rpc.ProposeResult_, *rpc.CurpError) {
 	proposeId, err := u.genProposeID()
 	if err != nil {
-		return nil, rpc.NewCurpError(err)
+		return nil, err
 	}
 	return u.repeatablePropose(proposeId, cmd, useFastPath)
 }
@@ -555,7 +560,7 @@ func (u *unary) slowRound(proposeId *curppb.ProposeId) (*rpc.WaitSyncedResult, *
 
 // nolint: unused
 // Generate a propose id
-func (u *unary) genProposeID() (*curppb.ProposeId, error) {
+func (u *unary) genProposeID() (*curppb.ProposeId, *rpc.CurpError) {
 	clientID, err := u.getClientId()
 	if err != nil {
 		return nil, err
@@ -570,7 +575,7 @@ func (u *unary) genProposeID() (*curppb.ProposeId, error) {
 // nolint: unused
 // Get the client id
 // TODO: grant a client id from server
-func (u *unary) getClientId() (uint64, error) {
+func (u *unary) getClientId() (uint64, *rpc.CurpError) {
 	return rand.Uint64(), nil
 }
 

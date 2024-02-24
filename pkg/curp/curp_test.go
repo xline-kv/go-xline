@@ -204,3 +204,37 @@ func TestUnaryProposeReturnEarlyErr(t *testing.T) {
 	assert.Nil(t, res)
 	assert.NotNil(t, err.GetShuttingDown())
 }
+
+func TestRetryProposeReturnNoRetryError(t *testing.T) {
+	allMembers := map[serverId][]string{
+		0: {"127.0.0.1:48081"},
+		1: {"127.0.0.1:48082"},
+		2: {"127.0.0.1:48083"},
+		3: {"127.0.0.1:48084"},
+		4: {"127.0.0.1:48085"},
+	}
+	unaryConfig := newUnaryConfig(1*time.Second, 2*time.Second)
+	unary, err := newUnaryBuilder(allMembers, unaryConfig).setLeaderState(0, 1).build()
+	assert.Nil(t, err)
+	retry := NewRetry(unary, newFixedRetryConfig(1*time.Millisecond, 3))
+	res, err := retry.propose(&xlineapi.Command{}, false)
+	assert.Nil(t, res)
+	assert.NotNil(t, err.GetShuttingDown())
+}
+
+func TestRetryProposeReturnRetryError(t *testing.T) {
+	allMembers := map[serverId][]string{
+		0: {"127.0.0.1:48081"},
+		1: {"127.0.0.1:48082"},
+		2: {"127.0.0.1:48083"},
+		3: {"127.0.0.1:48084"},
+		4: {"127.0.0.1:48085"},
+	}
+	unaryConfig := newUnaryConfig(1*time.Second, 2*time.Second)
+	unary, err := newUnaryBuilder(allMembers, unaryConfig).setLeaderState(0, 1).build()
+	assert.Nil(t, err)
+	retry := NewRetry(unary, newFixedRetryConfig(1*time.Millisecond, 3))
+	res, err := retry.propose(&xlineapi.Command{}, false)
+	assert.Nil(t, res)
+	assert.NotNil(t, err.GetInternal())
+}
